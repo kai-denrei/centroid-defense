@@ -290,15 +290,21 @@ export function isInsideScope(x, y) {
   return dx * dx + dy * dy <= SCOPE_R * SCOPE_R;
 }
 
-// ── Munition cam — bottom-right "video feed from the descending charge" ─────
+// ── Munition cam — "video feed from the descending charge" ──────────────────
 // Top-down view of the strike zone. View shrinks (zooms in) over the sink
 // delay; contact silhouettes brighten as the charge closes; static thins.
-const CAM_W = 200, CAM_H = 120;
+// Cam dims are dynamic: desktop = 200×120, mobile = ~360×68 (wide strip).
+// All draw geometry resolves against the dims passed in (window.__camDims).
 const CAM_VIEW_FAR = 240;     // px world-radius shown at zoom=0
 const CAM_VIEW_NEAR = 55;     // px world-radius shown at zoom=1
 const STRIKE_DELAY = 1.2;
 
+function camDims() {
+  return (typeof window !== 'undefined' && window.__camDims) || { w: 200, h: 120 };
+}
+
 export function drawMissileCam(ctx, state, t) {
+  const { w: CAM_W, h: CAM_H } = camDims();
   ctx.fillStyle = '#020602';
   ctx.fillRect(0, 0, CAM_W, CAM_H);
   // pick the strike closest to detonation (oldest in flight)
@@ -306,16 +312,17 @@ export function drawMissileCam(ctx, state, t) {
     ? state.pendingStrikes.reduce((a, b) => a.t0 < b.t0 ? a : b)
     : null;
   if (!strike) {
-    drawCamStatic(ctx, 0.10);
-    drawCamScanlines(ctx, t);
-    drawCamHeader(ctx, null);
-    drawCamFooter(ctx, null);
+    drawCamStatic(ctx, 0.10, CAM_W, CAM_H);
+    drawCamScanlines(ctx, t, CAM_W, CAM_H);
+    drawCamHeader(ctx, null, CAM_W, CAM_H);
+    drawCamFooter(ctx, null, CAM_W, CAM_H);
     return;
   }
   const age = t - strike.t0;
   const progress = Math.min(1, age / STRIKE_DELAY);
   const viewR = CAM_VIEW_FAR - (CAM_VIEW_FAR - CAM_VIEW_NEAR) * progress;
-  const scale = (CAM_H / 2) / viewR;
+  // scale uses the SHORTER dimension so the view fits no matter the aspect
+  const scale = (Math.min(CAM_W, CAM_H) / 2) / viewR;
 
   // depth-tinted background
   const bg = ctx.createRadialGradient(CAM_W / 2, CAM_H / 2, 0, CAM_W / 2, CAM_H / 2, CAM_H);
@@ -364,27 +371,25 @@ export function drawMissileCam(ctx, state, t) {
     ctx.setLineDash([]);
   }
 
-  drawCamCrosshair(ctx);
-  drawCamStatic(ctx, 0.05 + 0.10 * (1 - progress));
-  drawCamScanlines(ctx, t);
+  drawCamCrosshair(ctx, CAM_W, CAM_H);
+  drawCamStatic(ctx, 0.05 + 0.10 * (1 - progress), CAM_W, CAM_H);
+  drawCamScanlines(ctx, t, CAM_W, CAM_H);
 
-  // approach flash — random bright glitches in the last 30%
   if (progress > 0.7 && Math.random() < 0.10) {
     ctx.fillStyle = `rgba(255, 255, 220, ${0.04 + 0.10 * Math.random()})`;
     ctx.fillRect(0, 0, CAM_W, CAM_H);
   }
-  // impact flash on the final frame
   if (progress >= 0.985) {
     ctx.fillStyle = `rgba(255, 255, 255, ${1 - (1 - progress) / 0.015})`;
     ctx.fillRect(0, 0, CAM_W, CAM_H);
   }
 
   const tgtCount = state.contacts.filter(c => c.alive && Math.hypot(c.x - strike.x, c.y - strike.y) <= STRIKE_RADIUS).length;
-  drawCamHeader(ctx, { progress });
-  drawCamFooter(ctx, { progress, tgtCount });
+  drawCamHeader(ctx, { progress }, CAM_W, CAM_H);
+  drawCamFooter(ctx, { progress, tgtCount }, CAM_W, CAM_H);
 }
 
-function drawCamCrosshair(ctx) {
+function drawCamCrosshair(ctx, CAM_W, CAM_H) {
   const cx = CAM_W / 2, cy = CAM_H / 2;
   ctx.strokeStyle = 'rgba(255, 170, 68, 0.55)';
   ctx.lineWidth = 1;
@@ -408,7 +413,7 @@ function drawCamCrosshair(ctx) {
   }
 }
 
-function drawCamStatic(ctx, intensity) {
+function drawCamStatic(ctx, intensity, CAM_W, CAM_H) {
   const dots = Math.floor(CAM_W * CAM_H * intensity / 6);
   for (let i = 0; i < dots; i++) {
     const x = Math.floor(Math.random() * CAM_W);
@@ -421,16 +426,15 @@ function drawCamStatic(ctx, intensity) {
   }
 }
 
-function drawCamScanlines(ctx, t) {
+function drawCamScanlines(ctx, t, CAM_W, CAM_H) {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
   for (let y = 1; y < CAM_H; y += 2) ctx.fillRect(0, y, CAM_W, 1);
-  // slow rolling sweep band
   const sweepY = ((t * 22) % (CAM_H + 24)) - 12;
   ctx.fillStyle = 'rgba(140, 220, 140, 0.05)';
   ctx.fillRect(0, sweepY, CAM_W, 5);
 }
 
-function drawCamHeader(ctx, info) {
+function drawCamHeader(ctx, info, CAM_W, CAM_H) {
   ctx.font = '600 8px JetBrains Mono, ui-monospace, monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
@@ -443,7 +447,7 @@ function drawCamHeader(ctx, info) {
   }
 }
 
-function drawCamFooter(ctx, info) {
+function drawCamFooter(ctx, info, CAM_W, CAM_H) {
   ctx.font = '600 9px JetBrains Mono, ui-monospace, monospace';
   ctx.textBaseline = 'bottom';
   if (info) {

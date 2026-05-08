@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#050a05">
+<title>DEEPWATCH — RIG OFFLINE</title>
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" sizes="180x180">
+<style>
+  :root {
+    --p-hot: #88ff88;
+    --p-mid: #3a8c3a;
+    --p-dim: #0f2c0f;
+    --amber: #ffaa44;
+    --red: #ff3322;
+    --bg: #050a05;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--p-mid);
+    font-family: var(--mono);
+    height: 100%;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    letter-spacing: 0.12em;
+    gap: 18px;
+  }
+  h1 {
+    color: var(--amber);
+    font-size: 18px;
+    letter-spacing: 0.32em;
+    text-shadow: 0 0 12px rgba(255, 170, 68, 0.4);
+  }
+  .glyph {
+    font-size: 48px;
+    color: var(--red);
+    text-shadow: 0 0 14px rgba(255, 51, 34, 0.55);
+    letter-spacing: 0;
+  }
+  p {
+    color: var(--p-mid);
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 360px;
+    letter-spacing: 0.12em;
+  }
+  a {
+    color: var(--p-hot);
+    text-decoration: none;
+    border: 1px solid var(--p-mid);
+    padding: 10px 22px;
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-shadow: 0 0 6px rgba(136,255,136,0.4);
+    margin-top: 6px;
+  }
+  a:hover, a:active {
+    background: rgba(136, 255, 136, 0.08);
+    border-color: var(--p-hot);
+  }
+  .footnote {
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+  <div class="glyph">⚠</div>
+  <h1>RIG OFFLINE</h1>
+  <p>SIGNAL TO EXTRACTION PLATFORM CASS-3 LOST.<br>NO ROUTE TO MISSION SERVER.</p>
+  <a href="./">[ RETRY CONNECTION ]</a>
+  <div class="footnote">DEEPWATCH · CH3 · OPS</div>
+</body>
+</html>

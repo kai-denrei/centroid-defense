@@ -25,6 +25,15 @@ Owns the v1 thesis ("is the centroid-strike loop satisfying enough to carry a TD
 | 2026-05-08 | Auto-turret locked at 60px / 0.4s / 8 dmg (~20 DPS); cut to 5 dmg only if it carries wave 1 | Turret is a trickle-handler not a crutch; the spec is explicit | [[dev]] |
 | 2026-05-08 | Success criteria 1–3 are blocking-must-pass for v2 greenlight; criterion 4 (wave 3 trap) is nice-to-have | Solo playtester can't validate first-timer reactions; don't kill build over it | [[qa]] |
 | 2026-05-08 | Run-end / loss = full reset to wave 1, no continue, no save state, no restart-from-wave-N | Continue logic is meta-progression; OUT for v1 | [[dev]], [[ux]] |
+| 2026-05-09 | PM-DIRECTIVE-v1.3-mobile issued: desktop 880×920 layout locked under v1; mobile is its own composition behind `@media (max-width:899px)` | Two layouts beats infinite-responsive; scope of v1.3 is "ship native phone PWA," not "make every breakpoint pretty" | [[arch]], [[dev]], [[ux]], [[devops]] |
+| 2026-05-09 | Mobile portrait-locked via manifest; landscape shows "ROTATE TO PORTRAIT" overlay only | Scope is a circle; landscape phone is a different layout problem and not solved in v1.3 | [[ux]], [[dev]] |
+| 2026-05-09 | Tap-to-commit stays on mobile (no hold-to-aim revisit yet); flagged for retest after first phone playthrough | Mobile-specific ergonomics may differ from desktop; do not preempt — gate on real-device feel | [[dev]] |
+| 2026-05-09 | Mobile munition cam = full-width 68px strip, visible only during pending strike, scope shrinks to fit on slide-in | Strongest v1.2 feedback beat; reclaim space when idle for max scope size | [[ux]], [[dev]] |
+| 2026-05-09 | Mobile drops right-rail decoratives (RPM, SWEEP P, contact count, strikes-used); integrity moves to top-bar bottom-edge horizontal strip | Decoration, not actionable; revisit only if Gerald reports missing readouts | [[ux]] |
+| 2026-05-09 | Mobile endcards = fullscreen modals, not scope-only overlays | Scope-only would leave top bar + comms strip visible — looks broken | [[ux]], [[dev]] |
+| 2026-05-09 | PWA scaffolding scope: hand-rolled SW (port KikaCentroid pattern), versioned cache, offline.html, 5 PNG icons, manifest. Update toast deferred to v1.4 | Pattern is proven and Gerald-approved; bump-and-reload sufficient for current deploy cadence | [[arch]], [[devops]] |
+| 2026-05-09 | Out-of-scope for v1.3: haptics, gyro, push, Background Sync, app-store wrapper, leaderboard, settings UI, landscape, tablet breakpoint, audio settings | Each tempts the dev; defer all to v2+ | [[dev]] |
+| 2026-05-09 | Mobile build sequence is 10 milestones, gated on phone-device verification (not desktop devtools emulation) at every step; milestone #8 is the gating tap-accuracy test | Forces honest validation against the actual device that surfaced the bug | [[dev]], [[qa]] |
 
 ## Dead Ends
 | Date | What was tried | Why it failed / was rejected |

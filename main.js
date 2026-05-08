@@ -35,6 +35,53 @@ const ctx = canvas.getContext('2d');
 const camCanvas = document.getElementById('missilecam');
 const camCtx = camCanvas.getContext('2d');
 const camRec = document.getElementById('cam-rec');
+const camPane = document.getElementById('cam-pane');
+
+// Canonical 720-logical-px coordinate space. Backing store = cssSize × dpr.
+// On every resize, ctx.setTransform(dpr * scaleFactor, ...) once — game logic
+// keeps using RIG (360,360), SCOPE_R 320, etc. unchanged.
+const LOGICAL_SIZE = 720;
+const MOBILE_BREAKPOINT = 900;
+const MOBILE_TOP_PX = 40;
+const MOBILE_LOG_PX = 28;
+const MOBILE_CAM_PX = 68;
+let scaleFactor = 1;        // cssSize / LOGICAL_SIZE
+let dpr = 1;
+
+function isMobile() { return window.innerWidth < MOBILE_BREAKPOINT; }
+
+function fitCanvas() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Mobile: compute scope side from viewport - chrome - cam.
+  // Set --scope-css-px CSS var; canvas styling reads it.
+  if (isMobile()) {
+    const camPending = state.pendingStrikes && state.pendingStrikes.length > 0;
+    const camPx = camPending ? MOBILE_CAM_PX : 0;
+    const safeTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
+    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + camPx + safeTop;
+    const sideMax = Math.min(window.innerWidth, window.innerHeight - chrome);
+    const cssSize = Math.max(240, Math.floor(sideMax));
+    document.documentElement.style.setProperty('--scope-css-px', cssSize + 'px');
+    document.documentElement.style.setProperty('--cam-h', camPending ? (MOBILE_CAM_PX + 'px') : '0px');
+  }
+  // Read the canvas's actual rendered CSS width.
+  const cssSize = Math.floor(canvas.getBoundingClientRect().width) || LOGICAL_SIZE;
+  canvas.width = cssSize * dpr;
+  canvas.height = cssSize * dpr;
+  scaleFactor = cssSize / LOGICAL_SIZE;
+  ctx.setTransform(dpr * scaleFactor, 0, 0, dpr * scaleFactor, 0, 0);
+  // Cam dims: desktop = 200×120 fixed by CSS; mobile = current strip rect
+  const camRect = camCanvas.getBoundingClientRect();
+  const camW = Math.max(60, Math.floor(camRect.width)) || 200;
+  const camH = Math.max(40, Math.floor(camRect.height)) || 120;
+  camCanvas.width = camW * dpr;
+  camCanvas.height = camH * dpr;
+  camCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  window.__camDims = { w: camW, h: camH };
+}
+window.addEventListener('resize', fitCanvas);
+window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 50));
+window.addEventListener('visibilitychange', () => { if (!document.hidden) fitCanvas(); });
 
 const state = {
   phase: 'intro',
@@ -210,26 +257,50 @@ function render(t) {
   }
 }
 
+let prevCamPending = false;
 function frame(nowMs) {
   let dt = (nowMs - lastFrameMs) / 1000;
   if (dt > 0.05) dt = 0.05;
   lastFrameMs = nowMs;
   const t = nowMs / 1000;
   update(dt, t);
+  // Toggle mobile cam strip on pending-strike state change → re-fit canvas
+  const camPending = state.pendingStrikes.length > 0;
+  if (camPending !== prevCamPending) {
+    prevCamPending = camPending;
+    if (isMobile()) {
+      camPane.classList.toggle('hide', !camPending);
+      fitCanvas();
+    }
+  }
   render(t);
   drawMissileCam(camCtx, state, t);
-  camRec.style.visibility = state.pendingStrikes.length ? 'visible' : 'hidden';
+  camRec.style.visibility = camPending ? 'visible' : 'hidden';
   updateHUD(state);
   requestAnimationFrame(frame);
 }
 
 // INPUT
-canvas.addEventListener('pointerdown', (ev) => {
+// AudioContext gesture-unlock: iOS Safari needs all three events; capture phase
+// fires before any element handler, regardless of which UI element catches the
+// first tap. Single-shot, removes itself on first fire.
+function unlockAudioOnce() {
   ensureAudio(); resumeAudio();
+  document.removeEventListener('pointerdown', unlockAudioOnce, true);
+  document.removeEventListener('touchend',    unlockAudioOnce, true);
+  document.removeEventListener('click',       unlockAudioOnce, true);
+}
+document.addEventListener('pointerdown', unlockAudioOnce, true);
+document.addEventListener('touchend',    unlockAudioOnce, true);
+document.addEventListener('click',       unlockAudioOnce, true);
+
+canvas.addEventListener('pointerdown', (ev) => {
   if (state.phase !== 'wave_running') return;
+  // Map CSS-pixel client coords → 720-logical-px space (scope.js + contacts.js
+  // constants are all in 720-space; tap is the only mobile-specific math).
   const r = canvas.getBoundingClientRect();
-  const x = (ev.clientX - r.left) * (canvas.width / r.width);
-  const y = (ev.clientY - r.top) * (canvas.height / r.height);
+  const x = (ev.clientX - r.left) / scaleFactor;
+  const y = (ev.clientY - r.top) / scaleFactor;
   if (!isInsideScope(x, y) || state.strikesRemaining <= 0) return flickerOrdnance();
   state.pendingStrikes.push({ x, y, t0: now() });
   state.strikesRemaining -= 1;
@@ -245,7 +316,6 @@ window.addEventListener('keydown', (ev) => {
 window.addEventListener('click', () => advanceFromPrompt());
 
 function advanceFromPrompt() {
-  ensureAudio(); resumeAudio();
   if (state.phase === 'intro') { hideIntro(); startRun(); }
   else if (state.phase === 'wave_endcard') { hideEndcard(); startWave(state.wave + 1); }
   else if (state.phase === 'run_complete' || state.phase === 'game_over') { hideEndcard(); startRun(); }
@@ -253,10 +323,49 @@ function advanceFromPrompt() {
 
 // BOOT
 initHUD();
+if (isMobile()) camPane.classList.add('hide');
+fitCanvas();
 clearScope(ctx);
 drawScopeChrome(ctx);
 showIntro();
+setupInstallUI();
 requestAnimationFrame(frame);
+
+// ─── Install prompts ───────────────────────────────────────────────────────
+// Android: capture beforeinstallprompt, expose INSTALL button on intro overlay.
+// iOS Safari: never fires that event — show a dismissible Share→A2HS hint.
+function setupInstallUI() {
+  const installBtn = document.getElementById('install-btn');
+  const iosHint = document.getElementById('ios-a2hs');
+  const iosDismiss = document.getElementById('ios-a2hs-dismiss');
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  let deferredPrompt = null;
+
+  window.addEventListener('beforeinstallprompt', (ev) => {
+    ev.preventDefault();
+    deferredPrompt = ev;
+    installBtn.classList.add('show');
+  });
+  installBtn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice.catch(() => {});
+    deferredPrompt = null;
+    installBtn.classList.remove('show');
+  });
+
+  if (isIOS && !isStandalone && !localStorage.getItem('dw-a2hs-dismissed')) {
+    iosHint.classList.add('show');
+  }
+  iosDismiss.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    iosHint.classList.remove('show');
+    try { localStorage.setItem('dw-a2hs-dismissed', '1'); } catch (_) {}
+  });
+}
 
 // debug hooks for harness inspection (no-op in production)
 window.__dw = { state, startWave, advanceFromPrompt };

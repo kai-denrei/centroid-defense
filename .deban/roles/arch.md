@@ -21,6 +21,12 @@ File-structure and module boundaries for the v1 PoC. No frameworks, no build ste
 | 2026-05-08 | Canvas locked at 720×720px; rig at pixel (360, 360); scope outer ring at radius 320 | Square canvas avoids responsive math; spec implied ~640×720, locked to 720 for rig-centered symmetry | [[dev]], [[ux]] |
 | 2026-05-08 | Wave config `center: [x, y]` is canvas pixels with origin (0, 0) at canvas top-left, y-down | Pixel-space spawns are debuggable in devtools without polar conversion; zero gain from polar at v1 | [[dev]] |
 | 2026-05-08 | main.js soft-cap = 250 lines; overflow refactors into existing modules, no new files | A 200-line target accommodates state-machine reality at v1 scale; new files = wrong boundaries, not natural growth | [[dev]] |
+| 2026-05-09 | v1.3 file additions: `manifest.webmanifest`, `sw.js`, `offline.html`, `icons/` (5 PNGs), optional `scripts/build-icons.js`. No new game-logic modules | PWA scaffolding only; game code stays in the existing 7 files | [[devops]], [[dev]] |
+| 2026-05-09 | Canonical render coordinate space stays 720×720 logical pixels; mobile applies `ctx.setTransform(dpr * scaleFactor, 0, 0, dpr * scaleFactor, 0, 0)` once per resize | Zero changes to game logic, wave configs, or constants; render-time scale only | [[dev]] |
+| 2026-05-09 | devicePixelRatio capped at 2: `Math.min(window.devicePixelRatio || 1, 2)` | dpr=3 on iPhone Pro is wasted pixel work indistinguishable at arm's length; dpr=1 visibly soft | [[dev]] |
+| 2026-05-09 | Single mobile breakpoint at `@media (max-width: 899px)`; tablet falls into mobile bucket | Two layouts, not three; resist breakpoint creep until validated need | [[ux]], [[dev]] |
+| 2026-05-09 | Service worker caches modules via `?v=CACHE_VERSION` query strings on top-level `<script>` tags only; internal `import` statements stay unversioned and SWR-cached | Avoids per-release rewrite of every import path; freshness bounded to one extra load on bump | [[devops]], [[dev]] |
+| 2026-05-09 | `CACHE_VERSION` constant in sw.js + matching `?v=X.Y.Z` in index.html, bumped in lockstep on every deploy | KikaCentroid-proven pattern | [[devops]] |
 
 ## Dead Ends
 | Date | What was tried | Why it failed / was rejected |

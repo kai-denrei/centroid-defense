@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<!-- viewport pinned to page width so the 880-px desktop layout auto-fits a phone screen -->
-<meta name="viewport" content="width=900, initial-scale=1.0, user-scalable=yes" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#050a05" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="DEEPWATCH" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" sizes="180x180" />
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" />
 <title>DEEPWATCH — EXTRACTION PLATFORM CASS-3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -385,6 +390,210 @@
     letter-spacing: 0.2em;
     pointer-events: none;
   }
+
+  /* ROTATE-TO-PORTRAIT overlay (mobile landscape only) */
+  #rotate-hint {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    color: var(--amber);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 99;
+    text-align: center;
+    padding: 24px;
+    letter-spacing: 0.18em;
+    font-size: 14px;
+  }
+  #rotate-hint .glyph {
+    font-size: 42px;
+    color: var(--p-hot);
+    text-shadow: 0 0 14px rgba(136,255,136,0.6);
+  }
+
+  /* iOS A2HS hint */
+  #ios-a2hs {
+    display: none;
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: rgba(255, 170, 68, 0.08);
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    max-width: 360px;
+    line-height: 1.5;
+  }
+  #ios-a2hs.show { display: block; }
+  #ios-a2hs .dismiss {
+    color: var(--amber-dim);
+    font-size: 9px;
+    margin-top: 6px;
+    cursor: pointer;
+  }
+
+  /* Android install button */
+  #install-btn {
+    display: none;
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid var(--p-mid);
+    color: var(--p-hot);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    padding: 8px 22px;
+    cursor: pointer;
+    text-shadow: 0 0 6px rgba(136,255,136,0.4);
+  }
+  #install-btn.show { display: inline-block; }
+  #install-btn:hover, #install-btn:active {
+    background: rgba(136, 255, 136, 0.08);
+    border-color: var(--p-hot);
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     MOBILE PORTRAIT (< 900px) — own composition, not responsive desktop.
+     Desktop 880×920 grid above is unchanged. PM-DIRECTIVE-v1.3.
+     ════════════════════════════════════════════════════════════ */
+  @media (max-width: 899px) {
+    body { display: block; touch-action: manipulation; }
+    #stage {
+      width: 100dvw;
+      height: 100dvh;
+      grid-template-columns: 100dvw;
+      grid-template-rows:
+        calc(40px + env(safe-area-inset-top))
+        var(--scope-css-px, 360px)
+        28px
+        var(--cam-h, 0px);
+      padding-top: env(safe-area-inset-top);
+    }
+    /* TOP BAR — compressed */
+    #topbar {
+      grid-column: 1;
+      grid-row: 1;
+      padding: 0 10px;
+      align-items: flex-start;
+      padding-top: 7px;
+    }
+    #topbar .designation { font-size: 10px; letter-spacing: 0.14em; }
+    #topbar .center-readout { font-size: 10px; letter-spacing: 0.08em; }
+    #topbar .center-readout .wave { font-size: 11px; }
+    /* integrity bar pinned to bottom edge of topbar */
+    #leftrail {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: end;
+      flex-direction: row;
+      width: 100%;
+      height: 6px;
+      padding: 0;
+      background: var(--bg);
+      border: 0;
+      border-top: 1px solid var(--p-dim);
+      gap: 0;
+    }
+    #leftrail::after { display: none; }   /* kill scanlines on the thin strip */
+    #leftrail .rail-label,
+    #leftrail #integrity-readout { display: none; }
+    #leftrail #integrity-bar {
+      flex: 1;
+      width: 100%;
+      height: 5px;
+      border: 0;
+      background: var(--bg);
+    }
+    #leftrail #integrity-fill {
+      transition: width 220ms ease-out, background 200ms;
+      width: 100%;
+    }
+    /* SCOPE — fills available square */
+    #scope-frame {
+      grid-column: 1;
+      grid-row: 2;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+    }
+    #scope-frame canvas {
+      width: var(--scope-css-px, 360px);
+      height: var(--scope-css-px, 360px);
+      cursor: default;
+      touch-action: none;
+    }
+    #endcard, #intro {
+      position: fixed;
+      inset: 0;
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      width: 100dvw;
+      height: 100dvh;
+      padding: 24px;
+      z-index: 50;
+    }
+    #intro h1 { font-size: 22px; }
+    #intro p { font-size: 12px; }
+    #endcard h1 { font-size: 18px; letter-spacing: 0.18em; }
+    /* RIGHT RAIL — dropped on mobile */
+    #rightrail { display: none; }
+    /* COMMS — single-line scrolling strip */
+    #bottombar {
+      grid-column: 1;
+      grid-row: 3;
+      flex-direction: column;
+      gap: 0;
+      padding: 0;
+    }
+    #comms-pane {
+      flex: 1;
+      padding: 4px 10px 0 10px;
+    }
+    #log-header { display: none; }
+    #log {
+      font-size: 10px;
+      line-height: 1.3;
+      letter-spacing: 0.04em;
+    }
+    #log .line:not(:last-child) { display: none; }   /* show only newest */
+    /* CAM PANE — full-width strip below comms, only when strike pending */
+    #cam-pane {
+      grid-column: 1;
+      grid-row: 4;
+      width: 100dvw;
+      flex-direction: row;
+      gap: 0;
+      padding: 0;
+      align-items: stretch;
+    }
+    #cam-pane.hide { display: none; }
+    #cam-header {
+      width: 70px;
+      flex-shrink: 0;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 6px;
+      border-right: 1px solid var(--p-dim);
+      font-size: 8px;
+      margin-bottom: 0;
+      gap: 2px;
+    }
+    #cam-header .rec { font-size: 9px; }
+    #missilecam {
+      flex: 1;
+      width: auto;
+      height: 100%;
+    }
+  }
+
+  /* HIDE ROTATE HINT unless mobile + landscape */
+  @media (max-width: 899px) and (orientation: landscape) {
+    #rotate-hint { display: flex; }
+    #stage { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -419,7 +628,12 @@
         <p>EXTRACTION PLATFORM CASS-3 · OPERATOR ON SONAR · SUBSURFACE CONTACTS INBOUND</p>
         <p>READ THE PPI · TAP TO COMMIT DEPTH-CHARGE STRIKE · 1.2s SINK DELAY · DAMAGE FALLS OFF FROM CENTROID</p>
         <p>AUTO-TURRET HANDLES CLOSE-RANGE TRICKLE · IT WILL NOT SAVE YOU</p>
-        <div class="prompt">[SPACE] OR CLICK TO BEGIN</div>
+        <div class="prompt">[SPACE] OR TAP TO BEGIN</div>
+        <button id="install-btn" type="button">⏷ INSTALL</button>
+        <div id="ios-a2hs">
+          TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
+          <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
+        </div>
       </div>
     </main>
 
@@ -456,6 +670,20 @@
       </div>
     </footer>
   </div>
-  <script type="module" src="./main.js"></script>
+
+  <div id="rotate-hint">
+    <div class="glyph">⟳</div>
+    <div>ROTATE TO PORTRAIT</div>
+    <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
+  </div>
+
+  <script type="module" src="./main.js?v=1.3.0"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
