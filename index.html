@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<!-- viewport pinned to page width so the 880-px desktop layout auto-fits a phone screen -->
+<meta name="viewport" content="width=900, initial-scale=1.0, user-scalable=yes" />
+<meta name="theme-color" content="#050a05" />
+<title>DEEPWATCH — EXTRACTION PLATFORM CASS-3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --p-hot: #88ff88;
+    --p-mid: #3a8c3a;
+    --p-dim: #0f2c0f;
+    --amber: #ffaa44;
+    --amber-dim: #6b4818;
+    --red: #ff3322;
+    --bg: #050a05;
+    --bg-chrome: #0a120a;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #000;
+    color: var(--p-mid);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.3;
+    height: 100%;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  #scope { touch-action: none; }   /* canvas: prevent scroll/zoom on tap */
+  #stage {
+    width: 880px;
+    height: 920px;
+    display: grid;
+    grid-template-columns: 80px 720px 80px;
+    grid-template-rows: 48px 720px 152px;
+    background: var(--bg);
+    position: relative;
+  }
+  /* CRT chrome shared style */
+  .chrome {
+    background: var(--bg-chrome);
+    border: 1px solid var(--p-dim);
+    position: relative;
+    overflow: hidden;
+  }
+  .chrome::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0) 0px,
+      rgba(255, 255, 255, 0) 2px,
+      rgba(0, 0, 0, 0.06) 3px,
+      rgba(0, 0, 0, 0.06) 3px
+    );
+  }
+  /* TOP BAR */
+  #topbar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+  }
+  #topbar .designation {
+    color: var(--p-hot);
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    font-size: 14px;
+  }
+  #topbar .center-readout {
+    color: var(--p-mid);
+    letter-spacing: 0.12em;
+  }
+  #topbar .center-readout .wave {
+    color: var(--p-hot);
+    font-weight: 700;
+  }
+  #ord-pips {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  #ord-pips .label {
+    color: var(--amber-dim);
+    letter-spacing: 0.1em;
+    margin-right: 4px;
+  }
+  #ord-pips .pip {
+    width: 14px; height: 14px;
+    background: var(--amber);
+    box-shadow: 0 0 8px var(--amber);
+    border-radius: 2px;
+    transition: opacity 200ms, background 200ms;
+  }
+  #ord-pips .pip.spent {
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+    box-shadow: none;
+  }
+  #ord-pips .pip.flicker {
+    animation: oobflicker 200ms;
+  }
+  @keyframes oobflicker {
+    0%   { opacity: 0.2; }
+    50%  { opacity: 1.0; }
+    100% { opacity: 1.0; }
+  }
+  /* LEFT RAIL */
+  #leftrail {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 6px;
+    gap: 8px;
+  }
+  #leftrail .rail-label {
+    color: var(--p-mid);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    margin-top: 8px;
+  }
+  #integrity-bar {
+    flex: 1;
+    width: 22px;
+    background: var(--bg);
+    border: 1px solid var(--p-dim);
+    position: relative;
+    overflow: hidden;
+  }
+  #integrity-fill {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--p-hot);
+    box-shadow: 0 0 12px var(--p-hot);
+    transition: height 220ms ease-out, background 200ms;
+    height: 100%;
+  }
+  #integrity-fill.warn { background: var(--amber); box-shadow: 0 0 12px var(--amber); }
+  #integrity-fill.crit { background: var(--red); box-shadow: 0 0 14px var(--red); }
+  #integrity-readout {
+    color: var(--p-hot);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  #integrity-readout.warn { color: var(--amber); }
+  #integrity-readout.crit { color: var(--red); }
+  /* RIGHT RAIL */
+  #rightrail {
+    grid-column: 3;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 6px;
+    gap: 12px;
+    color: var(--p-mid);
+  }
+  #rightrail .stat {
+    text-align: center;
+  }
+  #rightrail .stat .num {
+    color: var(--p-hot);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    display: block;
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.4);
+  }
+  #rightrail .stat .lbl {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    margin-top: 2px;
+  }
+  /* SCOPE */
+  #scope-frame {
+    grid-column: 2;
+    grid-row: 2;
+    background: var(--bg);
+    position: relative;
+  }
+  #scope-frame canvas {
+    display: block;
+    width: 720px;
+    height: 720px;
+    cursor: crosshair;
+    background: #030604;
+  }
+  /* BOTTOM STATUS LOG + MUNITION CAM */
+  #bottombar {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    padding: 8px 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: row;
+    gap: 14px;
+    align-items: stretch;
+  }
+  #comms-pane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #cam-pane {
+    width: 218px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #cam-header {
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+  }
+  #cam-header .rec {
+    color: var(--red);
+    text-shadow: 0 0 6px rgba(255, 51, 34, 0.5);
+    animation: blink 1s steps(2) infinite;
+  }
+  #missilecam {
+    width: 200px;
+    height: 120px;
+    border: 1px solid var(--p-dim);
+    background: #020602;
+    display: block;
+    image-rendering: pixelated;
+  }
+  #log-header {
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+  }
+  #log {
+    flex: 1;
+    overflow-y: hidden;
+    color: var(--amber);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    line-height: 1.5;
+    text-shadow: 0 0 4px rgba(255, 170, 68, 0.25);
+  }
+  #log .line {
+    white-space: nowrap;
+    opacity: 0.85;
+  }
+  #log .line.fresh { opacity: 1.0; }
+  #log .line.crit  { color: var(--red); text-shadow: 0 0 6px rgba(255, 51, 34, 0.5); }
+  /* ENDCARD OVERLAY */
+  #endcard {
+    position: absolute;
+    inset: 0;
+    grid-column: 2;
+    grid-row: 2;
+    background: rgba(5, 10, 5, 0.82);
+    color: var(--amber);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 300ms;
+    z-index: 10;
+    padding: 40px;
+    text-align: center;
+    letter-spacing: 0.08em;
+  }
+  #endcard.show { opacity: 1; pointer-events: auto; }
+  #endcard h1 {
+    color: var(--p-hot);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-shadow: 0 0 10px rgba(136, 255, 136, 0.5);
+  }
+  #endcard h1.crit { color: var(--red); text-shadow: 0 0 12px rgba(255, 51, 34, 0.6); }
+  #endcard .stats {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 4px 24px;
+    color: var(--amber);
+    font-size: 13px;
+  }
+  #endcard .stats .label { color: var(--amber-dim); text-align: right; }
+  #endcard .stats .val   { color: var(--p-hot); text-align: left; font-weight: 700; }
+  #endcard .summary-table {
+    color: var(--p-mid);
+    font-size: 12px;
+    margin-top: 8px;
+  }
+  #endcard .summary-table th {
+    color: var(--amber-dim);
+    font-weight: 400;
+    text-align: right;
+    padding: 0 10px;
+    letter-spacing: 0.18em;
+    font-size: 10px;
+  }
+  #endcard .summary-table td {
+    color: var(--p-hot);
+    text-align: right;
+    padding: 0 10px;
+    font-weight: 500;
+  }
+  #endcard .prompt {
+    margin-top: 10px;
+    color: var(--amber);
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  /* INTRO OVERLAY */
+  #intro {
+    position: absolute;
+    inset: 0;
+    grid-column: 2;
+    grid-row: 2;
+    background: rgba(5, 10, 5, 0.88);
+    color: var(--amber);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    text-align: center;
+    padding: 40px;
+    z-index: 11;
+    letter-spacing: 0.08em;
+  }
+  #intro.hide { display: none; }
+  #intro h1 {
+    color: var(--p-hot);
+    font-size: 24px;
+    letter-spacing: 0.32em;
+    text-shadow: 0 0 12px rgba(136, 255, 136, 0.6);
+  }
+  #intro p {
+    color: var(--p-mid);
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 540px;
+  }
+  #intro .prompt {
+    color: var(--amber);
+    margin-top: 10px;
+    letter-spacing: 0.18em;
+    animation: blink 1s steps(2) infinite;
+  }
+  /* tiny corner tag for vibe */
+  .corner-tag {
+    position: absolute;
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <header id="topbar" class="chrome">
+      <div class="designation">EXTRACTION PLATFORM CASS-3</div>
+      <div class="center-readout">
+        <span>WAVE </span><span class="wave" id="wave-num">—</span>
+        <span> · MISSION </span><span id="mission-time">T+00:00</span>
+      </div>
+      <div id="ord-pips">
+        <span class="label">ORD</span>
+      </div>
+    </header>
+
+    <aside id="leftrail" class="chrome">
+      <div id="integrity-readout">100%</div>
+      <div id="integrity-bar"><div id="integrity-fill"></div></div>
+      <div class="rail-label">RIG INTEGRITY</div>
+    </aside>
+
+    <main id="scope-frame">
+      <canvas id="scope" width="720" height="720"></canvas>
+      <div id="endcard">
+        <h1 id="endcard-title">WAVE COMPLETE</h1>
+        <div class="stats" id="endcard-stats"></div>
+        <table class="summary-table" id="endcard-table" style="display:none;"></table>
+        <div class="prompt" id="endcard-prompt">[SPACE] CONTINUE</div>
+      </div>
+      <div id="intro">
+        <h1>DEEPWATCH</h1>
+        <p>EXTRACTION PLATFORM CASS-3 · OPERATOR ON SONAR · SUBSURFACE CONTACTS INBOUND</p>
+        <p>READ THE PPI · TAP TO COMMIT DEPTH-CHARGE STRIKE · 1.2s SINK DELAY · DAMAGE FALLS OFF FROM CENTROID</p>
+        <p>AUTO-TURRET HANDLES CLOSE-RANGE TRICKLE · IT WILL NOT SAVE YOU</p>
+        <div class="prompt">[SPACE] OR CLICK TO BEGIN</div>
+      </div>
+    </main>
+
+    <aside id="rightrail" class="chrome">
+      <div class="stat">
+        <span class="num" id="contact-count">0</span>
+        <div class="lbl">CONTACTS</div>
+      </div>
+      <div class="stat">
+        <span class="num">3.0s</span>
+        <div class="lbl">SWEEP P</div>
+      </div>
+      <div class="stat">
+        <span class="num">20</span>
+        <div class="lbl">RPM</div>
+      </div>
+      <div class="stat">
+        <span class="num" id="strikes-used">0</span>
+        <div class="lbl">STRIKES</div>
+      </div>
+    </aside>
+
+    <footer id="bottombar" class="chrome">
+      <div id="comms-pane">
+        <div id="log-header">// COMMS LOG · CASS-3 · ALL ENTRIES UTC</div>
+        <div id="log"></div>
+      </div>
+      <div id="cam-pane">
+        <div id="cam-header">
+          <span>// MUNITION CAM · CH3</span>
+          <span class="rec" id="cam-rec" style="visibility:hidden">● REC</span>
+        </div>
+        <canvas id="missilecam" width="200" height="120"></canvas>
+      </div>
+    </footer>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
