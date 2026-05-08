@@ -37,6 +37,9 @@
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
   body {
     display: flex;
@@ -45,6 +48,9 @@
     touch-action: manipulation;
   }
   #scope { touch-action: none; }   /* canvas: prevent scroll/zoom on tap */
+  /* iOS click on bare <div> is unreliable; mark overlays as tap targets so
+     pointerdown reliably fires on the element itself */
+  #intro, #endcard { cursor: pointer; }
   #stage {
     width: 880px;
     height: 920px;
@@ -677,7 +683,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=1.3.0"></script>
+  <script type="module" src="./main.js?v=1.3.1"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

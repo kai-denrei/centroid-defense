@@ -295,6 +295,7 @@ document.addEventListener('touchend',    unlockAudioOnce, true);
 document.addEventListener('click',       unlockAudioOnce, true);
 
 canvas.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();         // suppress synthesized mouse events on iOS
   if (state.phase !== 'wave_running') return;
   // Map CSS-pixel client coords → 720-logical-px space (scope.js + contacts.js
   // constants are all in 720-space; tap is the only mobile-specific math).
@@ -313,7 +314,19 @@ canvas.addEventListener('pointerdown', (ev) => {
 window.addEventListener('keydown', (ev) => {
   if (ev.code === 'Space' || ev.code === 'Enter') { ev.preventDefault(); advanceFromPrompt(); }
 });
-window.addEventListener('click', () => advanceFromPrompt());
+
+// Intro/endcard dismissal: bind pointerdown directly to the overlay elements.
+// iOS Safari does not reliably fire `click` on bare <div>s — pointerdown does.
+function bindOverlayAdvance(el) {
+  el.addEventListener('pointerdown', (ev) => {
+    // ignore taps on the install button or A2HS hint; they have their own handlers
+    if (ev.target.closest && ev.target.closest('#install-btn, #ios-a2hs')) return;
+    ev.preventDefault();
+    advanceFromPrompt();
+  });
+}
+bindOverlayAdvance(document.getElementById('intro'));
+bindOverlayAdvance(document.getElementById('endcard'));
 
 function advanceFromPrompt() {
   if (state.phase === 'intro') { hideIntro(); startRun(); }
