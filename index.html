@@ -474,9 +474,7 @@
       grid-template-rows:
         calc(40px + env(safe-area-inset-top))
         var(--scope-css-px, 360px)
-        28px
-        var(--cam-h, 0px);
-      padding-top: env(safe-area-inset-top);
+        auto;
     }
     /* TOP BAR — compressed */
     #topbar {
@@ -546,16 +544,19 @@
     #endcard h1 { font-size: 18px; letter-spacing: 0.18em; }
     /* RIGHT RAIL — dropped on mobile */
     #rightrail { display: none; }
-    /* COMMS — single-line scrolling strip */
+    /* BOTTOMBAR — comms strip + cam strip stacked vertically.
+       The cam strip is a flex sibling of comms, sized via JS-set --cam-h
+       (0 when no strike pending, 68px when one is in flight). */
     #bottombar {
       grid-column: 1;
       grid-row: 3;
       flex-direction: column;
       gap: 0;
       padding: 0;
+      align-items: stretch;
     }
     #comms-pane {
-      flex: 1;
+      flex: 0 0 28px;
       padding: 4px 10px 0 10px;
     }
     #log-header { display: none; }
@@ -567,13 +568,14 @@
     #log .line:not(:last-child) { display: none; }   /* show only newest */
     /* CAM PANE — full-width strip below comms, only when strike pending */
     #cam-pane {
-      grid-column: 1;
-      grid-row: 4;
+      flex: 0 0 var(--cam-h, 0px);
       width: 100dvw;
       flex-direction: row;
       gap: 0;
       padding: 0;
       align-items: stretch;
+      overflow: hidden;
+      transition: flex-basis 100ms ease;
     }
     #cam-pane.hide { display: none; }
     #cam-header {
@@ -592,6 +594,7 @@
       flex: 1;
       width: auto;
       height: 100%;
+      min-width: 0;
     }
   }
 
@@ -683,7 +686,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=1.3.1"></script>
+  <script type="module" src="./main.js?v=1.3.2"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
