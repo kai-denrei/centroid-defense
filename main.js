@@ -20,7 +20,7 @@ import {
 } from './hud.js';
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
-  strikeWhoosh, detonation, gameOverTone, runCompleteChime,
+  strikeWhoosh, detonation, gameOverTone, runCompleteChime, armedChime,
 } from './audio.js';
 
 const TAU = Math.PI * 2;
@@ -29,6 +29,8 @@ const STRIKE_DELAY = 1.2;
 const TURRET_FIRE_INTERVAL = 0.4;
 const TURRET_DPS_PER_SHOT = 8;
 const BLEEP_NEAR = 0.18, BLEEP_FAR = 1.2;
+const GAUGE_TIME = 6.0;        // seconds for one orbital window to fill
+const IMPACT_LINGER = 0.45;    // seconds the cam shows post-detonation aftermath
 
 const canvas = document.getElementById('scope');
 const ctx = canvas.getContext('2d');
@@ -52,17 +54,13 @@ function isMobile() { return window.innerWidth < MOBILE_BREAKPOINT; }
 
 function fitCanvas() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
-  // Mobile: compute scope side from viewport - chrome - cam.
-  // Set --scope-css-px CSS var; canvas styling reads it.
+  // Mobile: scope size is constant (cam always visible). Compute from viewport.
   if (isMobile()) {
-    const camPending = state.pendingStrikes && state.pendingStrikes.length > 0;
-    const camPx = camPending ? MOBILE_CAM_PX : 0;
     const safeTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
-    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + camPx + safeTop;
+    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + MOBILE_CAM_PX + safeTop;
     const sideMax = Math.min(window.innerWidth, window.innerHeight - chrome);
     const cssSize = Math.max(240, Math.floor(sideMax));
     document.documentElement.style.setProperty('--scope-css-px', cssSize + 'px');
-    document.documentElement.style.setProperty('--cam-h', camPending ? (MOBILE_CAM_PX + 'px') : '0px');
   }
   // Read the canvas's actual rendered CSS width.
   const cssSize = Math.floor(canvas.getBoundingClientRect().width) || LOGICAL_SIZE;
@@ -87,9 +85,18 @@ const state = {
   phase: 'intro',
   wave: 0, waveStartedAt: 0,
   rigIntegrity: 100,
-  strikesRemaining: 0, strikeBudgetThisWave: 0,
+  // strike model:
+  //   readyStrikes  — fully charged orbital assets, available to fire
+  //   reservedStrikes — queued, will charge in sequence
+  //   gauge         — 0..1 charge progress for the NEXT reserved strike
+  //   pendingStrikes — currently in flight, descending
+  //   impactLingers — recently detonated, cam shows aftermath ~0.45s
+  //   strikeBudgetThisWave kept for HUD display (total pips)
+  strikeBudgetThisWave: 0,
+  readyStrikes: 0, reservedStrikes: 0, gauge: 0,
+  pendingStrikes: [], impactLingers: [],
   contacts: [], blips: [],
-  pendingStrikes: [], detonations: [], turretShots: [],
+  detonations: [], turretShots: [],
   centroidMarker: null,
   sweep: 0, prevSweep: 0,
   turretLastShotAt: 0,
@@ -110,6 +117,7 @@ function startRun() {
   state.runStartTime = now();
   state.runStats = { totalStrikes: 0, wavesCleared: 0, waves: [] };
   state.pendingStrikes = [];
+  state.impactLingers = [];
   clearLog();
   startWave(1);
 }
@@ -117,22 +125,43 @@ function startRun() {
 function startWave(idx) {
   const w = WAVES[idx - 1];
   if (!w) return;
+  // first strike ready immediately, rest reserved and charging in sequence
+  const ready = w.strikeBudget > 0 ? 1 : 0;
+  const reserved = Math.max(0, w.strikeBudget - 1);
   Object.assign(state, {
     wave: idx, waveStartedAt: now(),
-    strikesRemaining: w.strikeBudget, strikeBudgetThisWave: w.strikeBudget,
-    contacts: [], blips: [], pendingStrikes: [], centroidMarker: null,
+    strikeBudgetThisWave: w.strikeBudget,
+    readyStrikes: ready, reservedStrikes: reserved, gauge: 0,
+    contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
+    centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
     waveStats: { strikesUsed: 0, bestAccuracyPx: null },
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
   });
-  setOrdnance(w.strikeBudgetThisWave, state.strikesRemaining);
+  setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   hideEndcard();
-  logT(`WAVE ${idx} INBOUND — ${w.name} · ${w.strikeBudget} DEPTH CHARGE${w.strikeBudget > 1 ? 'S' : ''} LOADED`);
+  logT(`WAVE ${idx} INBOUND — ${w.name} · ${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
 }
 
 function update(dt, t) {
   if (state.phase !== 'wave_running') return;
+  // orbital gauge — fills for next reserved strike, auto-promotes to ready
+  if (state.reservedStrikes > 0) {
+    state.gauge = Math.min(1, state.gauge + dt / GAUGE_TIME);
+    if (state.gauge >= 1) {
+      state.readyStrikes++;
+      state.reservedStrikes--;
+      state.gauge = 0;
+      armedChime();
+      logT(`ORBITAL WINDOW OPEN — ASSET ${state.runStats.totalStrikes + state.readyStrikes} ARMED`);
+    }
+  }
+  setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
+  // prune expired impact lingers
+  if (state.impactLingers.length) {
+    state.impactLingers = state.impactLingers.filter(l => t - l.t0 < IMPACT_LINGER);
+  }
   // sweep advance
   state.prevSweep = state.sweep;
   state.sweep = (state.sweep + dt * (TAU / SWEEP_PERIOD)) % TAU;
@@ -201,6 +230,7 @@ function detonate(strike, t) {
       ? accPx : Math.min(state.waveStats.bestAccuracyPx, accPx);
   }
   state.detonations.push({ x: strike.x, y: strike.y, t0: t });
+  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed });
   detonation();
   logT(`DETONATION — ${killed} CONTACT${killed === 1 ? '' : 'S'} NEUTRALIZED`);
 }
@@ -257,25 +287,16 @@ function render(t) {
   }
 }
 
-let prevCamPending = false;
 function frame(nowMs) {
   let dt = (nowMs - lastFrameMs) / 1000;
   if (dt > 0.05) dt = 0.05;
   lastFrameMs = nowMs;
   const t = nowMs / 1000;
   update(dt, t);
-  // Toggle mobile cam strip on pending-strike state change → re-fit canvas
-  const camPending = state.pendingStrikes.length > 0;
-  if (camPending !== prevCamPending) {
-    prevCamPending = camPending;
-    if (isMobile()) {
-      camPane.classList.toggle('hide', !camPending);
-      fitCanvas();
-    }
-  }
   render(t);
   drawMissileCam(camCtx, state, t);
-  camRec.style.visibility = camPending ? 'visible' : 'hidden';
+  // REC indicator pulses red whenever a munition is in flight
+  camRec.style.visibility = state.pendingStrikes.length ? 'visible' : 'hidden';
   updateHUD(state);
   requestAnimationFrame(frame);
 }
@@ -302,14 +323,14 @@ canvas.addEventListener('pointerdown', (ev) => {
   const r = canvas.getBoundingClientRect();
   const x = (ev.clientX - r.left) / scaleFactor;
   const y = (ev.clientY - r.top) / scaleFactor;
-  if (!isInsideScope(x, y) || state.strikesRemaining <= 0) return flickerOrdnance();
+  if (!isInsideScope(x, y) || state.readyStrikes <= 0) return flickerOrdnance();
   state.pendingStrikes.push({ x, y, t0: now() });
-  state.strikesRemaining -= 1;
+  state.readyStrikes -= 1;
   state.waveStats.strikesUsed += 1;
   state.runStats.totalStrikes += 1;
-  setOrdnance(state.strikeBudgetThisWave, state.strikesRemaining);
+  setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   strikeWhoosh();
-  logT(`STRIKE COMMITTED — TGT ${fmtBearing(bearingFromRig({x,y}))}/${fmtRange(Math.hypot(x - RIG.x, y - RIG.y))}`);
+  logT(`MUNITION RELEASED — TGT ${fmtBearing(bearingFromRig({x,y}))}/${fmtRange(Math.hypot(x - RIG.x, y - RIG.y))}`);
 });
 window.addEventListener('keydown', (ev) => {
   if (ev.code === 'Space' || ev.code === 'Enter') { ev.preventDefault(); advanceFromPrompt(); }
@@ -336,7 +357,6 @@ function advanceFromPrompt() {
 
 // BOOT
 initHUD();
-if (isMobile()) camPane.classList.add('hide');
 fitCanvas();
 clearScope(ctx);
 drawScopeChrome(ctx);

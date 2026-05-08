@@ -109,6 +109,24 @@ export function gameOverTone() {
   blip({ type: 'sawtooth', freq: 110, end: 50, decay: 0.6, gain: 0.25 });
 }
 
+// Armed chime — rising 2-note triangle, fires when an orbital window opens.
+export function armedChime() {
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  [392, 587].forEach((f, i) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, t0 + i * 0.10);
+    g.gain.setValueAtTime(0.0001, t0 + i * 0.10);
+    g.gain.exponentialRampToValueAtTime(0.13, t0 + i * 0.10 + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + i * 0.10 + 0.22);
+    osc.connect(g).connect(masterGain);
+    osc.start(t0 + i * 0.10);
+    osc.stop(t0 + i * 0.10 + 0.25);
+  });
+}
+
 // Run-complete chime — one phrase, three notes.
 export function runCompleteChime() {
   if (!ctx) return;

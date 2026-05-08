@@ -290,14 +290,17 @@ export function isInsideScope(x, y) {
   return dx * dx + dy * dy <= SCOPE_R * SCOPE_R;
 }
 
-// ── Munition cam — "video feed from the descending charge" ──────────────────
-// Top-down view of the strike zone. View shrinks (zooms in) over the sink
-// delay; contact silhouettes brighten as the charge closes; static thins.
-// Cam dims are dynamic: desktop = 200×120, mobile = ~360×68 (wide strip).
-// All draw geometry resolves against the dims passed in (window.__camDims).
+// ── Munition cam — always-on missile-POV feed ───────────────────────────────
+// 5 visual states driven off game state:
+//   STANDBY        — no strikes left this wave
+//   CHARGING       — orbital window filling (state.gauge: 0..1)
+//   ARMED          — at least 1 ready strike, target-lock enabled
+//   IN-FLIGHT      — descending munition (zoom-in cinematic)
+//   IMPACT-LINGER  — ~0.45s post-detonation aftermath
 const CAM_VIEW_FAR = 240;     // px world-radius shown at zoom=0
-const CAM_VIEW_NEAR = 55;     // px world-radius shown at zoom=1
+const CAM_VIEW_NEAR = 50;     // px world-radius shown at zoom=1 (tighter for impact)
 const STRIKE_DELAY = 1.2;
+const IMPACT_LINGER = 0.45;
 
 function camDims() {
   return (typeof window !== 'undefined' && window.__camDims) || { w: 200, h: 120 };
@@ -305,69 +308,232 @@ function camDims() {
 
 export function drawMissileCam(ctx, state, t) {
   const { w: CAM_W, h: CAM_H } = camDims();
+  // base wipe — black no-feed
   ctx.fillStyle = '#020602';
   ctx.fillRect(0, 0, CAM_W, CAM_H);
-  // pick the strike closest to detonation (oldest in flight)
-  const strike = state.pendingStrikes.length
-    ? state.pendingStrikes.reduce((a, b) => a.t0 < b.t0 ? a : b)
-    : null;
-  if (!strike) {
-    drawCamStatic(ctx, 0.10, CAM_W, CAM_H);
-    drawCamScanlines(ctx, t, CAM_W, CAM_H);
-    drawCamHeader(ctx, null, CAM_W, CAM_H);
-    drawCamFooter(ctx, null, CAM_W, CAM_H);
+
+  // 1) IMPACT-LINGER takes precedence — most recent linger that hasn't expired
+  const linger = pickRecent(state.impactLingers, t, IMPACT_LINGER);
+  if (linger) {
+    drawCamImpactLinger(ctx, linger, t, CAM_W, CAM_H);
     return;
   }
+  // 2) IN-FLIGHT — oldest pending strike (closest to detonation)
+  const strike = state.pendingStrikes && state.pendingStrikes.length
+    ? state.pendingStrikes.reduce((a, b) => a.t0 < b.t0 ? a : b)
+    : null;
+  if (strike) {
+    drawCamInFlight(ctx, state, strike, t, CAM_W, CAM_H);
+    return;
+  }
+  // 3) ARMED — at least 1 ready strike
+  if (state.readyStrikes > 0) {
+    drawCamArmed(ctx, t, CAM_W, CAM_H);
+    return;
+  }
+  // 4) CHARGING — gauge filling for next reserved strike
+  if (state.reservedStrikes > 0) {
+    drawCamCharging(ctx, state.gauge, t, CAM_W, CAM_H);
+    return;
+  }
+  // 5) STANDBY — no strikes left this wave
+  drawCamStandby(ctx, t, CAM_W, CAM_H);
+}
+
+function pickRecent(arr, t, ttl) {
+  if (!arr || !arr.length) return null;
+  let best = null;
+  for (const a of arr) if (t - a.t0 < ttl && (!best || a.t0 > best.t0)) best = a;
+  return best;
+}
+
+function drawCamStandby(ctx, t, W, H) {
+  drawCamStatic(ctx, 0.05, W, H);
+  drawCamScanlines(ctx, t, W, H);
+  ctx.font = '600 8px JetBrains Mono, ui-monospace, monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.6)';
+  ctx.fillText('CH3 · NO FEED', 4, 4);
+  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.45)';
+  ctx.fillText('STANDBY', W - 4, H - 4);
+  ctx.textAlign = 'left';
+  ctx.fillText('NO ASSETS', 4, H - 4);
+}
+
+function drawCamCharging(ctx, gauge, t, W, H) {
+  drawCamStatic(ctx, 0.07, W, H);
+  drawCamScanlines(ctx, t, W, H);
+  // orbital track viz: rotating dashed ellipse, tick marks
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  const rA = Math.min(W, H) * 0.32, rB = rA * 0.55;
+  ctx.rotate(t * 0.6);
+  ctx.strokeStyle = 'rgba(58, 140, 58, 0.55)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 5]);
+  ctx.beginPath(); ctx.ellipse(0, 0, rA, rB, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.setLineDash([]);
+  // satellite glyph (orbiting)
+  const orbitT = (gauge * Math.PI * 2);
+  const sx = Math.cos(orbitT) * rA;
+  const sy = Math.sin(orbitT) * rB;
+  ctx.fillStyle = 'rgba(136, 255, 136, 0.85)';
+  ctx.shadowColor = '#88ff88';
+  ctx.shadowBlur = 6;
+  ctx.fillRect(sx - 2, sy - 2, 4, 4);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+  // gauge bar at bottom
+  const gx = 6, gy = H - 16, gw = W - 12, gh = 3;
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.30)';
+  ctx.fillRect(gx, gy, gw, gh);
+  ctx.fillStyle = 'rgba(255, 170, 68, 0.95)';
+  ctx.fillRect(gx, gy, gw * gauge, gh);
+  // labels
+  ctx.font = '600 8px JetBrains Mono, ui-monospace, monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.85)';
+  ctx.fillText('CH3 · ORBITAL TELEMETRY', 4, 4);
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(255, 170, 68, 0.85)';
+  ctx.fillText(`ORBIT ${Math.round(gauge * 100)}%`, 4, H - 4);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.7)';
+  ctx.fillText('CHARGING', W - 4, H - 4);
+}
+
+function drawCamArmed(ctx, t, W, H) {
+  drawCamStatic(ctx, 0.04, W, H);
+  drawCamScanlines(ctx, t, W, H);
+  // pulsing crosshair — TGT LOCK READY
+  const pulse = 0.65 + 0.35 * Math.sin(t * 5);
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.strokeStyle = `rgba(255, 170, 68, ${pulse})`;
+  ctx.lineWidth = 1;
+  ctx.shadowColor = '#ffaa44';
+  ctx.shadowBlur = 6;
+  // big crosshair
+  const arm = Math.min(W, H) * 0.22;
+  ctx.beginPath();
+  ctx.moveTo(-arm, 0); ctx.lineTo(-4, 0);
+  ctx.moveTo(4, 0); ctx.lineTo(arm, 0);
+  ctx.moveTo(0, -arm); ctx.lineTo(0, -4);
+  ctx.moveTo(0, 4); ctx.lineTo(0, arm);
+  ctx.stroke();
+  // bracket corners
+  const br = Math.min(W, H) * 0.30;
+  for (const [sx, sy] of [[-br,-br],[br,-br],[-br,br],[br,br]]) {
+    ctx.beginPath();
+    ctx.moveTo(sx, sy + Math.sign(-sy) * 8); ctx.lineTo(sx, sy);
+    ctx.lineTo(sx + Math.sign(-sx) * 8, sy);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+  // labels
+  ctx.font = '600 8px JetBrains Mono, ui-monospace, monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.85)';
+  ctx.fillText('CH3 · CHARGE OPTICS', 4, 4);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = `rgba(255, 170, 68, ${0.5 + 0.5 * pulse})`;
+  ctx.fillText('▶ ARMED', W - 4, 4);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(255, 170, 68, 0.95)';
+  ctx.fillText('TGT LOCK READY', 4, H - 4);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.7)';
+  ctx.fillText('AWAITING TARGET', W - 4, H - 4);
+}
+
+function drawCamImpactLinger(ctx, linger, t, W, H) {
+  const age = t - linger.t0;
+  const tProg = age / IMPACT_LINGER;        // 0..1
+  // bright white-hot fade decaying to amber
+  const flash = 1 - tProg;
+  ctx.fillStyle = `rgba(255, 245, 200, ${0.55 * flash})`;
+  ctx.fillRect(0, 0, W, H);
+  // expanding shock ring centered
+  const ringR = Math.min(W, H) * (0.15 + tProg * 0.55);
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.strokeStyle = `rgba(255, 170, 68, ${(1 - tProg) * 0.85})`;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#ffaa44';
+  ctx.shadowBlur = 12 * (1 - tProg);
+  ctx.beginPath(); ctx.arc(0, 0, ringR, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+  drawCamStatic(ctx, 0.10 + 0.10 * (1 - tProg), W, H);
+  drawCamScanlines(ctx, t, W, H);
+  // text
+  ctx.font = '700 9px JetBrains Mono, ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = `rgba(255, 51, 34, ${(1 - tProg) * 0.95})`;
+  ctx.fillText(`DETONATION CONFIRMED`, W / 2, H / 2 - 8);
+  ctx.fillStyle = `rgba(255, 170, 68, ${(1 - tProg) * 0.95})`;
+  ctx.font = '600 9px JetBrains Mono, ui-monospace, monospace';
+  ctx.fillText(`${linger.killed} NEUTRALIZED`, W / 2, H / 2 + 6);
+  // top label
+  ctx.font = '600 8px JetBrains Mono, ui-monospace, monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255, 51, 34, 0.85)';
+  ctx.fillText('CH3 · IMPACT', 4, 4);
+}
+
+function drawCamInFlight(ctx, state, strike, t, CAM_W, CAM_H) {
   const age = t - strike.t0;
   const progress = Math.min(1, age / STRIKE_DELAY);
-  const viewR = CAM_VIEW_FAR - (CAM_VIEW_FAR - CAM_VIEW_NEAR) * progress;
-  // scale uses the SHORTER dimension so the view fits no matter the aspect
+  // ease-in zoom curve — slow at first, fast near impact (feels like falling)
+  const ez = progress * progress * (3 - 2 * progress);   // smoothstep
+  const viewR = CAM_VIEW_FAR - (CAM_VIEW_FAR - CAM_VIEW_NEAR) * ez;
   const scale = (Math.min(CAM_W, CAM_H) / 2) / viewR;
 
-  // depth-tinted background
-  const bg = ctx.createRadialGradient(CAM_W / 2, CAM_H / 2, 0, CAM_W / 2, CAM_H / 2, CAM_H);
-  bg.addColorStop(0, `rgba(18, ${48 + 32 * progress}, 18, 1)`);
-  bg.addColorStop(1, '#020602');
-  ctx.fillStyle = bg;
+  // subtle escalating cam shake
+  const shakeIntensity = 0.6 + progress * 2.0 + (progress > 0.85 ? (progress - 0.85) * 12 : 0);
+  const shakeX = (Math.random() - 0.5) * shakeIntensity;
+  const shakeY = (Math.random() - 0.5) * shakeIntensity;
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // depth-tinted background (greener as we close)
+  const grad = ctx.createRadialGradient(CAM_W / 2, CAM_H / 2, 0, CAM_W / 2, CAM_H / 2, CAM_H);
+  grad.addColorStop(0, `rgba(20, ${52 + 36 * progress}, 20, 1)`);
+  grad.addColorStop(1, '#020602');
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, CAM_W, CAM_H);
 
-  // contact silhouettes — drawn first so static + crosshair overlay them
+  // contact silhouettes — live updated, drift visible
   for (const c of state.contacts) {
     if (!c.alive) continue;
     const dx = c.x - strike.x, dy = c.y - strike.y;
     if (Math.hypot(dx, dy) > viewR * 1.3) continue;
     const sx = CAM_W / 2 + dx * scale;
     const sy = CAM_H / 2 + dy * scale;
-    if (sx < -8 || sx > CAM_W + 8 || sy < -8 || sy > CAM_H + 8) continue;
     const baseR = (3 + c.weight * 1.4) * (0.7 + 1.6 * progress);
-    // dark shadow halo
     const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, baseR * 2.2);
     sg.addColorStop(0, 'rgba(0, 0, 0, 0.85)');
     sg.addColorStop(0.55, 'rgba(0, 0, 0, 0.55)');
     sg.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = sg;
-    ctx.beginPath();
-    ctx.arc(sx, sy, baseR * 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    // dim phosphor heat-signature core (fades in as the charge closes)
-    if (progress > 0.35) {
+    ctx.beginPath(); ctx.arc(sx, sy, baseR * 2.2, 0, Math.PI * 2); ctx.fill();
+    if (progress > 0.30) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 8 + sx);
-      ctx.fillStyle = `rgba(140, 210, 140, ${(progress - 0.35) * (0.5 + 0.4 * pulse)})`;
-      ctx.beginPath();
-      ctx.arc(sx, sy, baseR * 0.45, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = `rgba(140, 210, 140, ${(progress - 0.30) * (0.55 + 0.4 * pulse)})`;
+      ctx.beginPath(); ctx.arc(sx, sy, baseR * 0.45, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  // blast-radius ring — what dies when the charge lands
+  // blast-radius dashed ring
   const blastRpx = STRIKE_RADIUS * scale;
   if (blastRpx > 4 && blastRpx < CAM_W * 0.7) {
     ctx.strokeStyle = `rgba(255, 170, 68, ${0.30 + 0.45 * progress})`;
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.arc(CAM_W / 2, CAM_H / 2, blastRpx, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(CAM_W / 2, CAM_H / 2, blastRpx, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
   }
 
@@ -375,18 +541,52 @@ export function drawMissileCam(ctx, state, t) {
   drawCamStatic(ctx, 0.05 + 0.10 * (1 - progress), CAM_W, CAM_H);
   drawCamScanlines(ctx, t, CAM_W, CAM_H);
 
-  if (progress > 0.7 && Math.random() < 0.10) {
+  // approach glitches in the last 30%
+  if (progress > 0.7 && Math.random() < 0.12) {
     ctx.fillStyle = `rgba(255, 255, 220, ${0.04 + 0.10 * Math.random()})`;
     ctx.fillRect(0, 0, CAM_W, CAM_H);
   }
+  // terminal flash on the final 1.5%
   if (progress >= 0.985) {
     ctx.fillStyle = `rgba(255, 255, 255, ${1 - (1 - progress) / 0.015})`;
     ctx.fillRect(0, 0, CAM_W, CAM_H);
   }
 
+  ctx.restore();    // end shake transform — labels render unshaken
+
+  // STAGE LABELS — ON, SET, LAUNCH (and IMPACT)
+  drawCamLaunchStages(ctx, progress, CAM_W, CAM_H);
+
   const tgtCount = state.contacts.filter(c => c.alive && Math.hypot(c.x - strike.x, c.y - strike.y) <= STRIKE_RADIUS).length;
   drawCamHeader(ctx, { progress }, CAM_W, CAM_H);
   drawCamFooter(ctx, { progress, tgtCount }, CAM_W, CAM_H);
+}
+
+// 3-stage indicator across top: ON → SET → LAUNCH (and IMPACT in red at end)
+function drawCamLaunchStages(ctx, progress, W, H) {
+  ctx.save();
+  ctx.font = '700 7px JetBrains Mono, ui-monospace, monospace';
+  ctx.textBaseline = 'top';
+  const stages = [
+    { label: 'ON',     active: true },
+    { label: 'SET',    active: true },
+    { label: 'LAUNCH', active: true },
+    { label: 'IMPACT', active: progress > 0.85 },
+  ];
+  let x = W / 2 - 60;
+  const y = 14;
+  for (const s of stages) {
+    const isImpact = s.label === 'IMPACT';
+    const c = s.active
+      ? (isImpact ? 'rgba(255, 51, 34, 0.95)' : 'rgba(255, 170, 68, 0.85)')
+      : 'rgba(58, 140, 58, 0.4)';
+    ctx.fillStyle = c;
+    ctx.textAlign = 'left';
+    ctx.fillText('●', x, y);
+    ctx.fillText(s.label, x + 6, y);
+    x += 30;
+  }
+  ctx.restore();
 }
 
 function drawCamCrosshair(ctx, CAM_W, CAM_H) {

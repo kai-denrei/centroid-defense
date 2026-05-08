@@ -103,9 +103,18 @@
     color: var(--p-hot);
     font-weight: 700;
   }
+  /* desktop: full text only; mobile media query swaps in .short */
+  #topbar .designation .short,
+  #topbar .center-readout .short { display: none; }
+  #ord-bay {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
   #ord-pips {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
   }
   #ord-pips .label {
@@ -114,16 +123,37 @@
     margin-right: 4px;
   }
   #ord-pips .pip {
+    position: relative;
     width: 14px; height: 14px;
-    background: var(--amber);
-    box-shadow: 0 0 8px var(--amber);
     border-radius: 2px;
-    transition: opacity 200ms, background 200ms;
+    transition: background 220ms, box-shadow 220ms, border-color 220ms;
+    overflow: hidden;
+  }
+  #ord-pips .pip.ready {
+    background: var(--amber);
+    box-shadow: 0 0 9px var(--amber);
+    border: 1px solid var(--amber);
   }
   #ord-pips .pip.spent {
     background: transparent;
     border: 1px solid var(--amber-dim);
     box-shadow: none;
+  }
+  #ord-pips .pip.charging {
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+  }
+  #ord-pips .pip.charging .charge-fill {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--amber);
+    box-shadow: inset 0 0 4px var(--amber);
+    transition: height 90ms linear;
+  }
+  #ord-pips .pip.reserved {
+    background: transparent;
+    border: 1px dashed var(--amber-dim);
+    opacity: 0.55;
   }
   #ord-pips .pip.flicker {
     animation: oobflicker 200ms;
@@ -132,6 +162,16 @@
     0%   { opacity: 0.2; }
     50%  { opacity: 1.0; }
     100% { opacity: 1.0; }
+  }
+  #ord-status {
+    color: var(--amber-dim);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    line-height: 1;
+  }
+  #ord-status.armed {
+    color: var(--amber);
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.55);
   }
   /* LEFT RAIL */
   #leftrail {
@@ -484,9 +524,12 @@
       align-items: flex-start;
       padding-top: 7px;
     }
-    #topbar .designation { font-size: 10px; letter-spacing: 0.14em; }
-    #topbar .center-readout { font-size: 10px; letter-spacing: 0.08em; }
-    #topbar .center-readout .wave { font-size: 11px; }
+    #topbar .designation { font-size: 11px; letter-spacing: 0.16em; }
+    #topbar .center-readout { font-size: 11px; letter-spacing: 0.10em; }
+    #topbar .designation .full,
+    #topbar .center-readout .full { display: none; }
+    #topbar .designation .short,
+    #topbar .center-readout .short { display: inline; }
     /* integrity bar pinned to bottom edge of topbar */
     #leftrail {
       grid-column: 1;
@@ -540,8 +583,14 @@
       z-index: 50;
     }
     #intro h1 { font-size: 22px; }
-    #intro p { font-size: 12px; }
+    #intro p {
+      font-size: 12px;
+      max-width: 100%;
+      width: 100%;
+      padding: 0 6px;
+    }
     #endcard h1 { font-size: 18px; letter-spacing: 0.18em; }
+    #endcard .stats { font-size: 12px; }
     /* RIGHT RAIL — dropped on mobile */
     #rightrail { display: none; }
     /* BOTTOMBAR — comms strip + cam strip stacked vertically.
@@ -566,18 +615,16 @@
       letter-spacing: 0.04em;
     }
     #log .line:not(:last-child) { display: none; }   /* show only newest */
-    /* CAM PANE — full-width strip below comms, only when strike pending */
+    /* CAM PANE — full-width strip, always visible. Black "no feed" when idle. */
     #cam-pane {
-      flex: 0 0 var(--cam-h, 0px);
+      flex: 0 0 68px;
       width: 100dvw;
       flex-direction: row;
       gap: 0;
       padding: 0;
       align-items: stretch;
       overflow: hidden;
-      transition: flex-basis 100ms ease;
     }
-    #cam-pane.hide { display: none; }
     #cam-header {
       width: 70px;
       flex-shrink: 0;
@@ -608,13 +655,17 @@
 <body>
   <div id="stage">
     <header id="topbar" class="chrome">
-      <div class="designation">EXTRACTION PLATFORM CASS-3</div>
-      <div class="center-readout">
-        <span>WAVE </span><span class="wave" id="wave-num">—</span>
-        <span> · MISSION </span><span id="mission-time">T+00:00</span>
+      <div class="designation">
+        <span class="full">EXTRACTION PLATFORM CASS-3</span>
+        <span class="short">CASS-3</span>
       </div>
-      <div id="ord-pips">
-        <span class="label">ORD</span>
+      <div class="center-readout">
+        <span class="full"><span>WAVE </span><span class="wave" id="wave-num">—</span><span> · MISSION </span><span id="mission-time">T+00:00</span></span>
+        <span class="short">W<span id="wave-num-short">—</span> · <span id="mission-time-short">00:00</span></span>
+      </div>
+      <div id="ord-bay">
+        <div id="ord-pips"><span class="label">ORD</span></div>
+        <div id="ord-status" class="status">STANDBY</div>
       </div>
     </header>
 
@@ -686,7 +737,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=1.3.2"></script>
+  <script type="module" src="./main.js?v=1.4.0"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

@@ -6,8 +6,11 @@ function $(id) { return document.getElementById(id); }
 
 export function initHUD() {
   dom.waveNum = $('wave-num');
+  dom.waveNumShort = $('wave-num-short');
   dom.missionTime = $('mission-time');
+  dom.missionTimeShort = $('mission-time-short');
   dom.ordPips = $('ord-pips');
+  dom.ordStatus = $('ord-status');
   dom.integrityFill = $('integrity-fill');
   dom.integrityReadout = $('integrity-readout');
   dom.contactCount = $('contact-count');
@@ -22,14 +25,16 @@ export function initHUD() {
 }
 
 export function updateHUD(state) {
-  if (state.wave > 0) dom.waveNum.textContent = String(state.wave);
-  else dom.waveNum.textContent = '—';
+  const waveTxt = state.wave > 0 ? String(state.wave) : '—';
+  dom.waveNum.textContent = waveTxt;
+  if (dom.waveNumShort) dom.waveNumShort.textContent = waveTxt;
 
   // mission clock — runStartTime base, MM:SS
   const elapsed = state.runStartTime ? Math.floor(performance.now() / 1000 - state.runStartTime) : 0;
   const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const s = String(elapsed % 60).padStart(2, '0');
   dom.missionTime.textContent = `T+${m}:${s}`;
+  if (dom.missionTimeShort) dom.missionTimeShort.textContent = `${m}:${s}`;
 
   // integrity bar
   const integ = Math.max(0, Math.min(100, state.rigIntegrity));
@@ -47,14 +52,48 @@ export function updateHUD(state) {
   dom.strikesUsed.textContent = String(state.runStats.totalStrikes);
 }
 
-// Rebuild the ordnance pips for the current wave's budget. Spent = hollow pip.
-export function setOrdnance(budget, remaining) {
-  // keep label, replace pips
+// Rebuild the ordnance pips with charging-aware visualization.
+// budget   — total strikes for the wave (== total pips)
+// ready    — fully-armed orbital assets, glowing solid
+// reserved — queued, waiting their turn; the next-up one shows a charging fill
+// gauge    — 0..1, fills the next-reserved pip
+// Used count = budget - ready - reserved - inFlight (computed from filled.length)
+export function setOrdnance(budget, ready, reserved, gauge) {
   while (dom.ordPips.children.length > 1) dom.ordPips.removeChild(dom.ordPips.lastChild);
+  // pip order (left → right): used … in-flight … ready … charging-next … reserved …
+  // We don't know in-flight here directly, but ready+reserved+(budget-ready-reserved-?) = used.
+  // Treat the first (budget - ready - reserved) pips as USED/IN-FLIGHT (hollow), then
+  // 1 pip CHARGING (if reserved>0 and gauge>0), then remaining RESERVED (faint outline),
+  // then ready as SOLID. To keep it simple visually:
+  const used = budget - ready - reserved;
   for (let i = 0; i < budget; i++) {
     const p = document.createElement('span');
-    p.className = 'pip' + (i < (budget - remaining) ? ' spent' : '');
+    p.className = 'pip';
+    if (i < used) {
+      p.classList.add('spent');
+    } else if (i < used + ready) {
+      // ready / armed
+      p.classList.add('ready');
+    } else if (i === used + ready && reserved > 0) {
+      // currently charging slot — show inline fill
+      p.classList.add('charging');
+      const fill = document.createElement('span');
+      fill.className = 'charge-fill';
+      fill.style.height = `${Math.round(Math.max(0, Math.min(1, gauge)) * 100)}%`;
+      p.appendChild(fill);
+    } else {
+      p.classList.add('reserved');
+    }
     dom.ordPips.appendChild(p);
+  }
+  // status line
+  if (dom.ordStatus) {
+    let txt;
+    if (ready > 0) txt = `ARMED · ${ready}`;
+    else if (reserved > 0) txt = `ORBIT ${Math.round(gauge * 100)}%`;
+    else txt = `STANDBY`;
+    dom.ordStatus.textContent = txt;
+    dom.ordStatus.className = 'status' + (ready > 0 ? ' armed' : '');
   }
 }
 
