@@ -296,11 +296,15 @@
       #1a1a1a 10px 20px
     ) 4;
     background: var(--bg-chrome);
-    padding: 6px 8px;
+    padding: 6px 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    min-height: 84px;             /* fit the vertical switch comfortably */
   }
+  /* Safety: vertical metal toggle. ON (up) = armed, OFF (down) = safe.
+     Two stacked PNG sprites swap on click; the .lbl-on/.lbl-off chips light
+     up to indicate current state. The "satisfying click" is in audio.js. */
   .safety {
     background: transparent;
     border: 0;
@@ -309,54 +313,38 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
+    gap: 2px;
     font: inherit;
     color: var(--p-mid);
+    width: 36px;
   }
-  .safety:focus-visible { outline: 1px dashed var(--amber-dim); outline-offset: 2px; }
-  .safety .track {
-    width: 56px;
-    height: 24px;
-    background: #0a0a0a;
-    border: 1px solid var(--p-dim);
-    border-radius: 12px;
-    position: relative;
-    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+  .safety:focus-visible { outline: 1px dashed var(--amber-dim); outline-offset: 3px; }
+  .safety .switch-img {
+    width: 30px;
+    height: 50px;
+    object-fit: contain;
+    pointer-events: none;        /* clicks pass through to the button */
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    image-rendering: -webkit-optimize-contrast;
   }
-  .safety .knob {
-    width: 20px;
-    height: 20px;
-    background: linear-gradient(145deg, #5a8a5a, #2a4a2a);
-    border-radius: 50%;
-    position: absolute;
-    top: 1px;
-    left: 1px;
-    transition: left 200ms cubic-bezier(.6,.05,.3,1.2), background 200ms;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  .safety .lbl-on,
+  .safety .lbl-off {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--p-dim);
+    transition: color 180ms, text-shadow 180ms;
+    line-height: 1;
   }
-  .safety[aria-pressed="true"] .knob {
-    left: 33px;
-    background: linear-gradient(145deg, #ff5544, #aa1a1a);
-    box-shadow: 0 0 8px rgba(255, 51, 34, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  }
-  .safety .lbl {
-    display: flex;
-    gap: 6px;
-    font-size: 8px;
-    letter-spacing: 0.16em;
-  }
-  .safety .lbl-safe { color: var(--p-mid); }
-  .safety .lbl-arm  { color: var(--amber-dim); }
-  .safety[aria-pressed="true"] .lbl-safe { color: var(--p-dim); }
-  .safety[aria-pressed="true"] .lbl-arm {
+  /* Active label: ON when armed, OFF when safe */
+  .safety[aria-pressed="true"]  .lbl-on  {
     color: var(--red);
     text-shadow: 0 0 6px rgba(255, 51, 34, 0.6);
   }
-  /* safety LOCKED (no missile yet) — knob cannot move */
-  .safety.locked {
-    cursor: not-allowed;
-    opacity: 0.45;
+  .safety[aria-pressed="false"] .lbl-off {
+    color: var(--p-mid);
+    text-shadow: 0 0 4px rgba(58, 140, 58, 0.4);
   }
+  .safety.locked { cursor: not-allowed; opacity: 0.45; }
   #launch-readout {
     flex: 1;
     min-width: 0;
@@ -1186,7 +1174,8 @@
     .caution-frame {
       padding: 4px 8px;
       gap: 8px;
-      height: 64px;
+      min-height: 70px;
+      height: 70px;
     }
     .launch-button {
       width: 78px;
@@ -1196,9 +1185,9 @@
     .launch-button .latin { font-size: 7px; }
     #launch-readout .status { font-size: 10px; letter-spacing: 0.12em; }
     #launch-readout .target { font-size: 8px; letter-spacing: 0.14em; }
-    .safety .track { width: 48px; height: 22px; }
-    .safety .knob { width: 18px; height: 18px; }
-    .safety[aria-pressed="true"] .knob { left: 28px; }
+    .safety { width: 30px; }
+    .safety .switch-img { width: 24px; height: 40px; }
+    .safety .lbl-on, .safety .lbl-off { font-size: 8px; letter-spacing: 0.14em; }
 
     /* CAM PANE — full-width strip, always visible. Black "no feed" when idle. */
     #cam-pane {
@@ -1286,7 +1275,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.5-α · deepdefense</div>
+        <div id="build-tag">v2.0.6-α · deepdefense</div>
       </div>
     </main>
 
@@ -1318,15 +1307,13 @@
         <div id="launch-header">
           <span>// LAUNCH CONTROL</span>
           <!-- per-component version. bump on each launch-console iteration. -->
-          <span class="comp-ver">v.1.0</span>
+          <span class="comp-ver">v.1.1</span>
         </div>
         <div id="launch-console" class="caution-frame">
           <button id="safety-switch" class="safety" type="button" aria-pressed="false" aria-label="Safety">
-            <span class="track"><span class="knob"></span></span>
-            <span class="lbl">
-              <span class="lbl-safe">SAFE</span>
-              <span class="lbl-arm">ARM</span>
-            </span>
+            <span class="lbl-on">ON</span>
+            <img id="safety-img" class="switch-img" src="icons/switch-off.png" alt="" width="120" height="200" />
+            <span class="lbl-off">OFF</span>
           </button>
           <div id="launch-readout">
             <div class="status" id="launch-status">STANDBY</div>
@@ -1382,7 +1369,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.5-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.6-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier

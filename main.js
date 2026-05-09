@@ -40,6 +40,7 @@ const camCtx = camCanvas.getContext('2d');
 const camRec = document.getElementById('cam-rec');
 const camPane = document.getElementById('cam-pane');
 const safetyBtn = document.getElementById('safety-switch');
+const safetyImg = document.getElementById('safety-img');
 const launchBtn = document.getElementById('launch-btn');
 const launchStatusEl = document.getElementById('launch-status');
 const launchTargetEl = document.getElementById('launch-target');
@@ -371,9 +372,13 @@ function updateLaunchConsole() {
   const ready = state.readyStrikes > 0;
   const armed = state.safetyOff;
   const hasTarget = !!state.targetReticle;
-  // safety switch
+  // safety switch — vertical toggle: ON image when armed, OFF when safe
   safetyBtn.setAttribute('aria-pressed', armed ? 'true' : 'false');
   safetyBtn.classList.toggle('locked', !ready && !armed);
+  if (safetyImg) {
+    const target = armed ? 'icons/switch-on.png' : 'icons/switch-off.png';
+    if (!safetyImg.src.endsWith(target)) safetyImg.src = target;
+  }
   // launch button
   launchBtn.classList.toggle('ready', ready && !armed);
   launchBtn.classList.toggle('armed', ready && armed && hasTarget);
@@ -385,7 +390,7 @@ function updateLaunchConsole() {
   } else if (!ready && state.reservedStrikes > 0) {
     status = `ORBIT ${Math.round(state.gauge * 100)}%`; statusClass = 'charging';
   } else if (ready && !armed) {
-    status = 'READY · ENGAGE SAFETY'; statusClass = 'ready';
+    status = 'READY · FLIP TO ON'; statusClass = 'ready';
   } else if (ready && armed && !hasTarget) {
     status = 'AWAITING TARGET'; statusClass = 'armed';
   } else if (ready && armed && hasTarget) {

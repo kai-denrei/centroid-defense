@@ -5,7 +5,7 @@
 // install a fresh cache and old caches are evicted on activate. Asset query
 // strings (?v=ASSET_VER) on top-level scripts must be in lockstep.
 
-const CACHE_VERSION = 'v2.0.5-alpha';
+const CACHE_VERSION = 'v2.0.6-alpha';
 const PRECACHE = `dw-precache-${CACHE_VERSION}`;
 const RUNTIME  = `dw-runtime-${CACHE_VERSION}`;
 const BESTIARY_CACHE = `dw-bestiary-${CACHE_VERSION}`;   // separate bucket for codex art
@@ -28,6 +28,8 @@ const PRECACHE_URLS = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon-180.png',
   './icons/favicon-32.png',
+  './icons/switch-on.png',
+  './icons/switch-off.png',
 ];
 
 self.addEventListener('install', (event) => {
