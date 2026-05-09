@@ -10,7 +10,8 @@ import { WAVES } from './waves.js';
 import {
   clearScope, smearScope, drawScopeChrome, drawSweep, drawBlips,
   drawPendingStrike, drawDetonations, drawCentroidMarker, drawTurretTracers,
-  drawGameOverFlash, isInsideScope, drawMissileCam, drawTargetReticle,
+  drawGameOverFlash, isInsideScope, drawMissileCam, drawMissileCamFullscreen,
+  drawTargetReticle,
 } from './scope.js';
 import { drawBase, seedRipples, initRipplePool, makeDrone } from './base.js';
 import {
@@ -427,7 +428,6 @@ function isCamView() {
   return state.phase === 'wave_running'
       && (state.pendingStrikes.length > 0 || state.impactLingers.length > 0);
 }
-const FULLSCREEN_CAM_DIMS = { w: 720, h: 720 };
 let _prevRenderMode = null;
 function render(t, dt) {
   let mode;
@@ -440,7 +440,7 @@ function render(t, dt) {
     clearScope(ctx);
     _prevRenderMode = mode;
   }
-  if (mode === 'cam') drawMissileCam(ctx, state, t, FULLSCREEN_CAM_DIMS);
+  if (mode === 'cam') drawMissileCamFullscreen(ctx, state, t);
   else if (mode === 'rig') drawBase(ctx, state, t, dt);
   else renderRadar(t);
 }
