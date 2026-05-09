@@ -144,8 +144,18 @@ export function fmtRange(px) {
   return String(Math.round(px / 320 * 2400)).padStart(4, '0');
 }
 
+// Hit-tier color matches the cam impact stamp (FULL/PARTIAL/GLANCING).
+function hitsCellHtml(hits, inRadius) {
+  if (!inRadius) return '<span style="color:var(--p-mid)">—</span>';
+  const pct = hits / inRadius;
+  let color = 'var(--red)';
+  if (pct >= 0.999) color = '#88e0ff';
+  else if (pct >= 0.5) color = 'var(--amber)';
+  return `<span style="color:${color}">${hits}/${inRadius} (${Math.round(pct * 100)}%)</span>`;
+}
+
 // ENDCARD — wave end, run complete, game over.
-export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accuracyPct, integrity, allDestroyed }) {
+export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accuracyPct, hits, inRadius, integrity, allDestroyed }) {
   dom.endcardTitle.textContent = allDestroyed
     ? `WAVE ${wave} COMPLETE`
     : `WAVE ${wave} — RIG INTEGRITY CRITICAL`;
@@ -154,6 +164,7 @@ export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accurac
   dom.endcardStats.innerHTML = '';
   appendStat('ARCHETYPE', name || '—');
   appendStat('STRIKES USED', `${strikesUsed} / ${strikeBudget}`);
+  appendStatHTML('TOTAL HITS', hitsCellHtml(hits || 0, inRadius || 0));
   appendStat('BEST ACCURACY', accuracyPct == null ? '—' : `${Math.round(accuracyPct)}%`);
   appendStat('RIG INTEGRITY', `${Math.round(integrity)}%`);
   dom.endcardPrompt.textContent = '[SPACE] CONTINUE';
@@ -165,18 +176,22 @@ export function showRunCompleteCard({ runStats, integrity }) {
   dom.endcardTitle.className = '';
   dom.endcardStats.innerHTML = '';
   appendStat('FINAL RIG INTEGRITY', `${Math.round(integrity)}%`);
+  const totalHits = runStats.waves.reduce((s, w) => s + (w.hits || 0), 0);
+  const totalInRadius = runStats.waves.reduce((s, w) => s + (w.inRadius || 0), 0);
+  appendStatHTML('TOTAL HITS (RUN)', hitsCellHtml(totalHits, totalInRadius));
   // summary table
   const tbl = dom.endcardTable;
   tbl.style.display = '';
   tbl.innerHTML = `
     <thead><tr>
-      <th>WAVE</th><th>ARCHETYPE</th><th>STRIKES</th><th>BEST ACC.</th>
+      <th>WAVE</th><th>ARCHETYPE</th><th>STRIKES</th><th>HITS</th><th>BEST ACC.</th>
     </tr></thead>
     <tbody>
       ${runStats.waves.map(w => `<tr>
         <td>${w.wave}</td>
         <td>${w.name}</td>
         <td>${w.strikesUsed}/${w.budget}</td>
+        <td>${hitsCellHtml(w.hits || 0, w.inRadius || 0)}</td>
         <td>${w.bestAcc == null ? '—' : Math.round(w.bestAcc) + '%'}</td>
       </tr>`).join('')}
     </tbody>`;
@@ -203,6 +218,12 @@ export function showIntro() { dom.intro.classList.remove('hide'); }
 function appendStat(label, val) {
   const a = document.createElement('div'); a.className = 'label'; a.textContent = label;
   const b = document.createElement('div'); b.className = 'val'; b.textContent = val;
+  dom.endcardStats.appendChild(a);
+  dom.endcardStats.appendChild(b);
+}
+function appendStatHTML(label, html) {
+  const a = document.createElement('div'); a.className = 'label'; a.textContent = label;
+  const b = document.createElement('div'); b.className = 'val'; b.innerHTML = html;
   dom.endcardStats.appendChild(a);
   dom.endcardStats.appendChild(b);
 }

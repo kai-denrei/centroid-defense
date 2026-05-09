@@ -1,7 +1,7 @@
 // main.js — game loop, state, input, transitions.
 
 import {
-  RIG, SCOPE_R, STRIKE_RADIUS,
+  RIG, SCOPE_R, STRIKE_RADIUS, STRIKE_DELAY,
   materializeSpawn, updateContacts, weightedCentroid,
   bearingFromRig, rangeFromRig, angleCrossed,
   pickTurretTarget, pruneBlips, applyBlast,
@@ -25,12 +25,11 @@ import {
 
 const TAU = Math.PI * 2;
 const SWEEP_PERIOD = 3.0;
-const STRIKE_DELAY = 1.2;
 const TURRET_FIRE_INTERVAL = 0.4;
 const TURRET_DPS_PER_SHOT = 8;
 const BLEEP_NEAR = 0.18, BLEEP_FAR = 1.2;
 const GAUGE_TIME = 6.0;        // seconds for one orbital window to fill
-const IMPACT_LINGER = 0.45;    // seconds the cam shows post-detonation aftermath
+const IMPACT_LINGER = 0.55;    // seconds the cam shows post-detonation aftermath
 
 const canvas = document.getElementById('scope');
 const ctx = canvas.getContext('2d');
@@ -135,7 +134,7 @@ function startWave(idx) {
     contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
     centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
-    waveStats: { strikesUsed: 0, bestAccuracyPx: null },
+    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0 },
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
   });
@@ -222,17 +221,22 @@ function update(dt, t) {
 }
 
 function detonate(strike, t) {
-  const { killed, trueCentroid } = applyBlast(state.contacts, strike);
+  const { killed, inRadius, trueCentroid } = applyBlast(state.contacts, strike);
+  const inCount = inRadius.length;
   if (trueCentroid) {
     state.centroidMarker = { x: trueCentroid.x, y: trueCentroid.y, t0: t };
     const accPx = Math.hypot(trueCentroid.x - strike.x, trueCentroid.y - strike.y);
     state.waveStats.bestAccuracyPx = (state.waveStats.bestAccuracyPx == null)
       ? accPx : Math.min(state.waveStats.bestAccuracyPx, accPx);
   }
+  // hit-count tracking — k/n where k = killed, n = contacts inside blast radius
+  state.waveStats.totalHits = (state.waveStats.totalHits || 0) + killed;
+  state.waveStats.totalInRadius = (state.waveStats.totalInRadius || 0) + inCount;
   state.detonations.push({ x: strike.x, y: strike.y, t0: t });
-  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed });
+  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed, inRadius: inCount });
   detonation();
-  logT(`DETONATION — ${killed} CONTACT${killed === 1 ? '' : 'S'} NEUTRALIZED`);
+  const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
+  logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%)`);
 }
 
 function triggerGameOver(t) {
@@ -247,9 +251,12 @@ function finishWave(t, allDestroyed) {
   const accPct = state.waveStats.bestAccuracyPx == null ? null
     : Math.max(0, 1 - state.waveStats.bestAccuracyPx / STRIKE_RADIUS) * 100;
   const w = WAVES[state.wave - 1];
+  const hits = state.waveStats.totalHits || 0;
+  const inRad = state.waveStats.totalInRadius || 0;
   state.runStats.waves.push({
     wave: state.wave, name: w.name, budget: w.strikeBudget,
     strikesUsed: state.waveStats.strikesUsed, bestAcc: accPct,
+    hits, inRadius: inRad,
     integrity: state.rigIntegrity,
   });
   state.runStats.wavesCleared = state.wave;
@@ -262,6 +269,7 @@ function finishWave(t, allDestroyed) {
     showWaveEndcard({
       wave: state.wave, name: w.name, strikesUsed: state.waveStats.strikesUsed,
       strikeBudget: w.strikeBudget, accuracyPct: accPct,
+      hits, inRadius: inRad,
       integrity: state.rigIntegrity, allDestroyed,
     });
     logT(`WAVE ${state.wave} CLEAR — STAND BY`);

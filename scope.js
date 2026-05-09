@@ -2,7 +2,7 @@
 // Scope is sacred: no CRT effects on the canvas, only on the HUD chrome.
 // All draw functions take ctx + state-fragments; state mutation lives in main.js.
 
-import { RIG, SCOPE_R, TURRET_R, STRIKE_RADIUS } from './contacts.js';
+import { RIG, SCOPE_R, TURRET_R, STRIKE_RADIUS, STRIKE_DELAY } from './contacts.js';
 
 const TAU = Math.PI * 2;
 const W = 720, H = 720;
@@ -299,8 +299,7 @@ export function isInsideScope(x, y) {
 //   IMPACT-LINGER  — ~0.45s post-detonation aftermath
 const CAM_VIEW_FAR = 240;     // px world-radius shown at zoom=0
 const CAM_VIEW_NEAR = 50;     // px world-radius shown at zoom=1 (tighter for impact)
-const STRIKE_DELAY = 1.2;
-const IMPACT_LINGER = 0.45;
+const IMPACT_LINGER = 0.55;
 
 function camDims() {
   return (typeof window !== 'undefined' && window.__camDims) || { w: 200, h: 120 };
@@ -448,39 +447,66 @@ function drawCamArmed(ctx, t, W, H) {
   ctx.fillText('AWAITING TARGET', W - 4, H - 4);
 }
 
+// hit color tier — user spec:
+//   100%  → white/cyan (FULL HIT)
+//   ≥50%  → amber       (PARTIAL)
+//   <50%  → red         (GLANCING)
+// Empty in-radius (strike missed entirely) → red GLANCING with 0/0 readout.
+function hitTier(killed, inRadius) {
+  if (inRadius <= 0)              return { rgb: '255, 51, 34',   hex: '#ff3322', label: 'GLANCING' };
+  const pct = killed / inRadius;
+  if (pct >= 0.999)               return { rgb: '136, 224, 255', hex: '#88e0ff', label: 'FULL HIT' };
+  if (pct >= 0.5)                 return { rgb: '255, 170, 68',  hex: '#ffaa44', label: 'PARTIAL' };
+  return                                 { rgb: '255, 51, 34',   hex: '#ff3322', label: 'GLANCING' };
+}
+
 function drawCamImpactLinger(ctx, linger, t, W, H) {
   const age = t - linger.t0;
   const tProg = age / IMPACT_LINGER;        // 0..1
-  // bright white-hot fade decaying to amber
-  const flash = 1 - tProg;
-  ctx.fillStyle = `rgba(255, 245, 200, ${0.55 * flash})`;
+  const tier = hitTier(linger.killed || 0, linger.inRadius || 0);
+  const fadeIn = Math.min(1, age / 0.10);   // 0.1s fade-in for the text
+  const fadeOut = 1 - tProg;
+  const alpha = fadeIn * fadeOut;
+
+  // bright white-hot flash decay
+  ctx.fillStyle = `rgba(255, 245, 200, ${0.55 * fadeOut})`;
   ctx.fillRect(0, 0, W, H);
-  // expanding shock ring centered
+  // expanding shock ring tinted by tier
   const ringR = Math.min(W, H) * (0.15 + tProg * 0.55);
   ctx.save();
   ctx.translate(W / 2, H / 2);
-  ctx.strokeStyle = `rgba(255, 170, 68, ${(1 - tProg) * 0.85})`;
+  ctx.strokeStyle = `rgba(${tier.rgb}, ${fadeOut * 0.85})`;
   ctx.lineWidth = 2;
-  ctx.shadowColor = '#ffaa44';
-  ctx.shadowBlur = 12 * (1 - tProg);
+  ctx.shadowColor = tier.hex;
+  ctx.shadowBlur = 12 * fadeOut;
   ctx.beginPath(); ctx.arc(0, 0, ringR, 0, Math.PI * 2); ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.restore();
-  drawCamStatic(ctx, 0.10 + 0.10 * (1 - tProg), W, H);
+
+  drawCamStatic(ctx, 0.10 + 0.10 * fadeOut, W, H);
   drawCamScanlines(ctx, t, W, H);
-  // text
-  ctx.font = '700 9px JetBrains Mono, ui-monospace, monospace';
+
+  // BIG hit-count stamp — color-coded
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = `rgba(255, 51, 34, ${(1 - tProg) * 0.95})`;
-  ctx.fillText(`DETONATION CONFIRMED`, W / 2, H / 2 - 8);
-  ctx.fillStyle = `rgba(255, 170, 68, ${(1 - tProg) * 0.95})`;
-  ctx.font = '600 9px JetBrains Mono, ui-monospace, monospace';
-  ctx.fillText(`${linger.killed} NEUTRALIZED`, W / 2, H / 2 + 6);
+  // big k/n number — rises slightly as it fades
+  const yLift = -tProg * 4;
+  ctx.font = '800 22px JetBrains Mono, ui-monospace, monospace';
+  ctx.fillStyle = `rgba(${tier.rgb}, ${alpha})`;
+  ctx.shadowColor = tier.hex;
+  ctx.shadowBlur = 14 * fadeOut;
+  ctx.fillText(`${linger.killed}/${linger.inRadius} HIT`, W / 2, H / 2 - 4 + yLift);
+  // tier label below
+  ctx.font = '700 10px JetBrains Mono, ui-monospace, monospace';
+  ctx.shadowBlur = 6 * fadeOut;
+  ctx.fillStyle = `rgba(${tier.rgb}, ${alpha * 0.9})`;
+  ctx.fillText(tier.label, W / 2, H / 2 + 14 + yLift);
+  ctx.shadowBlur = 0;
+
   // top label
   ctx.font = '600 8px JetBrains Mono, ui-monospace, monospace';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillStyle = 'rgba(255, 51, 34, 0.85)';
+  ctx.fillStyle = `rgba(${tier.rgb}, 0.85)`;
   ctx.fillText('CH3 · IMPACT', 4, 4);
 }
 

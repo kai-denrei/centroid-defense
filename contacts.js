@@ -7,6 +7,7 @@ export const TURRET_R = 60;        // auto-turret range (pixels)
 export const STRIKE_RADIUS = 80;   // depth-charge blast radius (pixels)
 export const STRIKE_MAX_DMG = 100;
 export const STRIKE_K = 1.5;       // falloff exponent — k=1.5 rewards precision without making near-misses worthless
+export const STRIKE_DELAY = 2.4;   // seconds — sink time for the missile cinematic
 
 // Contact factory. hp default = 20 light / 80 heavy (weight*20).
 export function makeContact(x, y, vx, vy, weight = 1) {
