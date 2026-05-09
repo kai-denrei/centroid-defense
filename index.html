@@ -273,6 +273,20 @@
     letter-spacing: 0.22em;
     margin-bottom: 4px;
     flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  /* Per-component version tag — small, dim, right-aligned in the section header.
+     Used to verify which iteration of a panel is running at a glance. Bump
+     locally when the panel's behaviour changes; orthogonal to the global build
+     tag in the intro corner. */
+  .comp-ver {
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
   }
   .caution-frame {
     border: 4px solid transparent;
@@ -1272,7 +1286,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.3-α · deepdefense</div>
+        <div id="build-tag">v2.0.4-α · deepdefense</div>
       </div>
     </main>
 
@@ -1301,7 +1315,11 @@
         <div id="log"></div>
       </div>
       <div id="launch-pane">
-        <div id="launch-header">// LAUNCH CONTROL</div>
+        <div id="launch-header">
+          <span>// LAUNCH CONTROL</span>
+          <!-- per-component version. bump on each launch-console iteration. -->
+          <span class="comp-ver">v.1.0</span>
+        </div>
         <div id="launch-console" class="caution-frame">
           <button id="safety-switch" class="safety" type="button" aria-pressed="false" aria-label="Safety">
             <span class="track"><span class="knob"></span></span>
@@ -1364,7 +1382,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.3-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.4-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
