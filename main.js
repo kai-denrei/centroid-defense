@@ -4,7 +4,7 @@ import {
   RIG, SCOPE_R, STRIKE_RADIUS, STRIKE_DELAY,
   materializeSpawn, updateContacts, weightedCentroid,
   bearingFromRig, rangeFromRig, angleCrossed,
-  pickTurretTarget, pruneBlips, applyBlast,
+  pruneBlips, applyBlast,
 } from './contacts.js';
 import { WAVES } from './waves.js';
 import {
@@ -13,7 +13,7 @@ import {
   drawGameOverFlash, isInsideScope, drawMissileCam, drawMissileCamFullscreen,
   drawTargetReticle,
 } from './scope.js';
-import { drawBase, seedRipples, initRipplePool, makeDrone } from './base.js';
+import { drawBase, drawDrones, tickDrones, seedRipples, initRipplePool, makeDrone, dronePos } from './base.js';
 import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
   fmtTime, fmtBearing, fmtRange,
@@ -29,19 +29,25 @@ import {
 
 const TAU = Math.PI * 2;
 const SWEEP_PERIOD = 3.0;
-const TURRET_FIRE_INTERVAL_BASE = 0.4;
 const TURRET_DPS_PER_SHOT = 8;
 const BLEEP_NEAR = 0.18, BLEEP_FAR = 1.2;
 const GAUGE_TIME = 6.0;        // seconds for one orbital window to fill
 const IMPACT_LINGER = 0.55;    // seconds the cam shows post-detonation aftermath
 const BUILD_PHASE_DURATION = 25.0;   // seconds between waves to spend biomass
 const DRONE_COST = 20;
-const DRONE_FIRE_RATE_FACTOR = 0.85; // each drone multiplies turret interval by this (faster fire)
-// Computed per state — interval shrinks as drones are deployed.
-function turretInterval(state) {
-  const n = (state.drones && state.drones.length) || 0;
-  return Math.max(0.10, TURRET_FIRE_INTERVAL_BASE * Math.pow(DRONE_FIRE_RATE_FACTOR, n));
-}
+// Independent point-defense intervals. Each turret picks its own nearest
+// live contact within its engagement range and fires; effective rate
+// scales linearly with drone count.
+const RIG_TURRET_INTERVAL = 0.55;
+const DRONE_TURRET_INTERVAL = 0.95;
+// Engagement ranges. Basic drones are last-line defense — they only see
+// contacts close to the rig (upgrade tiers later may extend this). The rig
+// central auto-turret has full scope range.
+const DRONE_RANGE_BASIC = 130;
+const RIG_RANGE = 320;          // = SCOPE_R; full board
+// Rig-central turret muzzle position — anchored at the amber turret marker
+// on the baked rig sprite (top of rig hex). Imported via const for clarity.
+const RIG_TURRET_OFFSET_Y = -35;     // ≈ RIG_RADIUS * 0.4 (see base.js)
 
 const canvas = document.getElementById('scope');
 const ctx = canvas.getContext('2d');
@@ -52,6 +58,7 @@ const camPane = document.getElementById('cam-pane');
 const safetyBtn = document.getElementById('safety-switch');
 const safetyImg = document.getElementById('safety-img');
 const launchBtn = document.getElementById('launch-btn');
+const launchLatinEl = document.getElementById('launch-latin');
 const launchStatusEl = document.getElementById('launch-status');
 const launchTargetEl = document.getElementById('launch-target');
 // seabase v1 — build phase controls
@@ -161,7 +168,8 @@ function startRun() {
   state.impactLingers = [];
   state.biomass = 0;
   state.codex = {};
-  state.drones = [];
+  // Two starter drones — rig has minimum point-defense from the first wave.
+  state.drones = [makeDrone(now()), makeDrone(now())];
   // mark all ripples inactive (the pool persists across runs)
   for (const r of state.ripples) r.alive = false;
   clearLog();
@@ -206,7 +214,11 @@ function startWave(idx) {
     contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
     centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
-    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0, biomassEarned: 0 },
+    waveStats: {
+      strikesUsed: 0, bestAccuracyPx: null,
+      strikeKills: 0, strikeBiomass: 0, totalInRadius: 0,
+      droneKills: 0, droneBiomass: 0,
+    },
     biomassThisWave: 0,
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
@@ -226,6 +238,9 @@ function startWave(idx) {
 }
 
 function update(dt, t) {
+  // Drone orbits advance regardless of which view is active so positions
+  // stay consistent during cam takeover.
+  tickDrones(state.drones, dt);
   // Ripples animate whenever we're showing the sea-base (build phase OR in-wave rig view).
   if (isRigView()) seedRipples(state, dt, t);
   // Build phase tick — auto-advance after BUILD_PHASE_DURATION
@@ -292,26 +307,20 @@ function update(dt, t) {
     state.pendingStrikes = state.pendingStrikes.filter(ps => t - ps.t0 < STRIKE_DELAY);
     for (const ps of due) detonate(ps, t);
   }
-  // auto-turret. Armored species (Barytolithus, Megacidodon, Architeuthys,
-  // Ferrobacterium-soak) take 50% turret damage — they exist precisely to
-  // bypass point defense. Fire interval shrinks per deployed drone (seabase v1).
-  if (t - state.turretLastShotAt >= turretInterval(state)) {
-    const tgt = pickTurretTarget(state.contacts);
-    if (tgt) {
-      const armored = tgt.abilities && (tgt.abilities.includes('armored') || tgt.abilities.includes('ordnance-soak'));
-      const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
-      tgt.hp -= dmg;
-      state.turretShots.push({ x: tgt.x, y: tgt.y, t0: t });
+  // Point-defense — rig central turret + each drone fires independently at
+  // its own nearest live contact within range. Armored species (Barytolithus,
+  // Megacidodon, Architeuthys, Ferrobacterium-soak) take 50% turret damage.
+  // Drones are last-line defense (DRONE_RANGE_BASIC); rig central reaches
+  // the full scope.
+  if (t - state.turretLastShotAt >= RIG_TURRET_INTERVAL) {
+    if (firePointDefense(t, RIG.x, RIG.y + RIG_TURRET_OFFSET_Y, 'rig', null, RIG_RANGE)) {
       state.turretLastShotAt = t;
-      if (tgt.hp <= 0) {
-        tgt.alive = false;
-        // turret kills also yield biomass + codex (smaller take, but counted)
-        state.biomass += tgt.biomass || 0;
-        state.biomassThisWave += tgt.biomass || 0;
-        state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + (tgt.biomass || 0);
-        if (tgt.speciesId) state.codex[tgt.speciesId] = (state.codex[tgt.speciesId] || 0) + 1;
-      }
     }
+  }
+  for (const d of state.drones) {
+    if (t - (d.lastShotAt || 0) < DRONE_TURRET_INTERVAL) continue;
+    const dp = dronePos(d);
+    firePointDefense(t, dp.x, dp.y, 'drone', d, DRONE_RANGE_BASIC);
   }
   // prune transient effects
   state.detonations = state.detonations.filter(d => t - d.t0 < 0.6);
@@ -323,6 +332,45 @@ function update(dt, t) {
   if (allSpawned && live === 0 && state.pendingStrikes.length === 0) finishWave(t, true);
 }
 
+// Single shared point-defense fire path: pick the nearest live contact
+// within `range` of (originX, originY), apply armored-aware damage, push a
+// turretShot record (with the frozen origin so renderers draw from where
+// it actually fired), update the optional firing drone's facing + throttle.
+function firePointDefense(t, originX, originY, source, drone, range) {
+  let best = null, bestD = Infinity;
+  for (const c of state.contacts) {
+    if (!c.alive) continue;
+    const dist = Math.hypot(c.x - originX, c.y - originY);
+    if (dist > range) continue;
+    if (dist < bestD) { bestD = dist; best = c; }
+  }
+  if (!best) return false;
+  const armored = best.abilities && (best.abilities.includes('armored') || best.abilities.includes('ordnance-soak'));
+  const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
+  best.hp -= dmg;
+  state.turretShots.push({ ox: originX, oy: originY, x: best.x, y: best.y, t0: t, source });
+  // Cumulative shot tally (survives the per-frame prune). Used by tests +
+  // any future HUD wanting to display lifetime fire counts.
+  state.shotsFired = state.shotsFired || { rig: 0, drone: 0 };
+  state.shotsFired[source] = (state.shotsFired[source] || 0) + 1;
+  if (drone) {
+    drone.facing = Math.atan2(best.y - originY, best.x - originX);
+    drone.lastShotAt = t;
+  }
+  if (best.hp <= 0) {
+    best.alive = false;
+    const bio = best.biomass || 0;
+    state.biomass += bio;
+    state.biomassThisWave += bio;
+    // Both the rig-central turret and per-drone turrets count as
+    // "automated point defense" for the wave breakdown.
+    state.waveStats.droneKills = (state.waveStats.droneKills || 0) + 1;
+    state.waveStats.droneBiomass = (state.waveStats.droneBiomass || 0) + bio;
+    if (best.speciesId) state.codex[best.speciesId] = (state.codex[best.speciesId] || 0) + 1;
+  }
+  return true;
+}
+
 function detonate(strike, t) {
   const { killed, inRadius, trueCentroid, biomass, killedSpeciesIds } = applyBlast(state.contacts, strike);
   const inCount = inRadius.length;
@@ -332,12 +380,13 @@ function detonate(strike, t) {
     state.waveStats.bestAccuracyPx = (state.waveStats.bestAccuracyPx == null)
       ? accPx : Math.min(state.waveStats.bestAccuracyPx, accPx);
   }
-  // hit-count + biomass + codex bookkeeping
-  state.waveStats.totalHits = (state.waveStats.totalHits || 0) + killed;
+  // strike-kill bookkeeping (tracked separately from drone kills for the
+  // wave-end breakdown).
+  state.waveStats.strikeKills = (state.waveStats.strikeKills || 0) + killed;
+  state.waveStats.strikeBiomass = (state.waveStats.strikeBiomass || 0) + biomass;
   state.waveStats.totalInRadius = (state.waveStats.totalInRadius || 0) + inCount;
   state.biomass += biomass;
   state.biomassThisWave += biomass;
-  state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + biomass;
   for (const id of killedSpeciesIds) {
     state.codex[id] = (state.codex[id] || 0) + 1;
   }
@@ -346,6 +395,19 @@ function detonate(strike, t) {
   detonation();
   const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
   logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%) · +${biomass} BIOMASS`);
+  // Friendly fire — drones inside the strike radius are destroyed. The
+  // operator pays a real cost for sloppy targeting near the rig.
+  if (state.drones && state.drones.length) {
+    const before = state.drones.length;
+    state.drones = state.drones.filter(d => {
+      const p = dronePos(d);
+      return Math.hypot(p.x - strike.x, p.y - strike.y) > STRIKE_RADIUS;
+    });
+    const lost = before - state.drones.length;
+    if (lost > 0) {
+      logT(`DRONE LOSS — ${lost} ASSET${lost > 1 ? 'S' : ''} CAUGHT IN FRIENDLY BLAST`, { crit: true });
+    }
+  }
   // Auto-revert to rig view after every detonation (seabase v2 design).
   if (state.phase === 'wave_running') state.viewMode = 'rig';
 }
@@ -362,16 +424,23 @@ function finishWave(t, allDestroyed) {
   const accPct = state.waveStats.bestAccuracyPx == null ? null
     : Math.max(0, 1 - state.waveStats.bestAccuracyPx / STRIKE_RADIUS) * 100;
   const w = WAVES[state.wave - 1];
-  const hits = state.waveStats.totalHits || 0;
-  const inRad = state.waveStats.totalInRadius || 0;
+  const ws = state.waveStats;
+  const strikeKills = ws.strikeKills || 0;
+  const strikeBiomass = ws.strikeBiomass || 0;
+  const droneKills = ws.droneKills || 0;
+  const droneBiomass = ws.droneBiomass || 0;
+  const hits = strikeKills + droneKills;
+  const inRad = ws.totalInRadius || 0;
+  const biomassEarned = strikeBiomass + droneBiomass;
   const headSp = w.headliner ? speciesById(w.headliner) : null;
   const binomial = headSp ? `${headSp.genus} ${headSp.species}` : null;
   state.runStats.waves.push({
     wave: state.wave, name: w.name, budget: w.strikeBudget,
     binomial,
-    strikesUsed: state.waveStats.strikesUsed, bestAcc: accPct,
+    strikesUsed: ws.strikesUsed, bestAcc: accPct,
     hits, inRadius: inRad,
-    biomass: state.waveStats.biomassEarned || 0,
+    strikeKills, strikeBiomass, droneKills, droneBiomass,
+    biomass: biomassEarned,
     integrity: state.rigIntegrity,
   });
   state.runStats.wavesCleared = state.wave;
@@ -382,23 +451,28 @@ function finishWave(t, allDestroyed) {
     logT('EXTRACTION SECURED — ALL THREATS NEUTRALIZED');
   } else {
     showWaveEndcard({
-      wave: state.wave, name: w.name, binomial, strikesUsed: state.waveStats.strikesUsed,
-      strikeBudget: w.strikeBudget, accuracyPct: accPct,
+      wave: state.wave, name: w.name, binomial,
+      strikesUsed: ws.strikesUsed, strikeBudget: w.strikeBudget,
+      accuracyPct: accPct,
       hits, inRadius: inRad,
-      biomassEarned: state.waveStats.biomassEarned || 0,
+      strikeKills, strikeBiomass, droneKills, droneBiomass,
+      biomassEarned,
       biomassTotal: state.biomass,
       integrity: state.rigIntegrity, allDestroyed,
     });
-    logT(`WAVE ${state.wave} CLEAR — +${state.waveStats.biomassEarned || 0} BIOMASS COLLECTED · TOTAL ${state.biomass}`);
+    logT(`WAVE ${state.wave} CLEAR — STRIKES ${strikeKills} (+${strikeBiomass}) · DRONES ${droneKills} (+${droneBiomass}) · TOTAL ${state.biomass}`);
   }
 }
 
 // Renders Mode A (radar, during waves) — the existing PPI sonar.
-function renderRadar(t) {
+function renderRadar(t, dt) {
   smearScope(ctx, 0.22);
   drawScopeChrome(ctx);
   drawSweep(ctx, state.sweep);
   drawBlips(ctx, state.blips, t);
+  // Drones are real allied units on the board — show them on the radar
+  // too, not just rig view, so all three views read the same state.
+  drawDrones(ctx, state.drones || [], t, dt || 0);
   drawTurretTracers(ctx, state.turretShots, t);
   drawDetonations(ctx, state.detonations, t);
   drawCentroidMarker(ctx, state.centroidMarker, t);
@@ -442,7 +516,7 @@ function render(t, dt) {
   }
   if (mode === 'cam') drawMissileCamFullscreen(ctx, state, t);
   else if (mode === 'rig') drawBase(ctx, state, t, dt);
-  else renderRadar(t);
+  else renderRadar(t, dt);
 }
 
 // View toggle — only meaningful during wave_running. Build_phase always rig;
@@ -523,10 +597,19 @@ function updateLaunchConsole() {
     const target = armed ? 'icons/switch-on.png' : 'icons/switch-off.png';
     if (!safetyImg.src.endsWith(target)) safetyImg.src = target;
   }
-  // launch button
-  launchBtn.classList.toggle('ready', ready && !armed);
+  // launch button — three explicit visual states:
+  //   default (grey)   — not ready, OR safety still ON (player should arm)
+  //   .target (orange) — armed, no target locked → "発射 TARGET"
+  //   .armed  (red)    — armed + target locked → "発射 LAUNCH"
+  launchBtn.classList.toggle('target', ready && armed && !hasTarget);
   launchBtn.classList.toggle('armed', ready && armed && hasTarget);
   launchBtn.disabled = !(ready && armed && hasTarget);
+  // Latin sub-label switches between TARGET (awaiting designation) and
+  // LAUNCH (commitable). Kanji 発射 stays static — it's the verb either way.
+  if (launchLatinEl) {
+    const latin = (ready && armed && !hasTarget) ? 'TARGET' : 'LAUNCH';
+    if (launchLatinEl.textContent !== latin) launchLatinEl.textContent = latin;
+  }
   // status readout
   let status, statusClass;
   if (state.pendingStrikes.length && !ready && state.reservedStrikes === 0 && state.gauge === 0) {

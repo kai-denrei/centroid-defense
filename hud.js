@@ -339,7 +339,12 @@ function hitsCellHtml(hits, inRadius) {
 }
 
 // ENDCARD — wave end, run complete, game over.
-export function showWaveEndcard({ wave, name, binomial, strikesUsed, strikeBudget, accuracyPct, hits, inRadius, biomassEarned, biomassTotal, integrity, allDestroyed }) {
+export function showWaveEndcard({
+  wave, name, binomial, strikesUsed, strikeBudget, accuracyPct,
+  hits, inRadius,
+  strikeKills, strikeBiomass, droneKills, droneBiomass,
+  biomassEarned, biomassTotal, integrity, allDestroyed,
+}) {
   dom.endcardTitle.textContent = allDestroyed
     ? `WAVE ${wave} COMPLETE`
     : `WAVE ${wave} — RIG INTEGRITY CRITICAL`;
@@ -349,11 +354,18 @@ export function showWaveEndcard({ wave, name, binomial, strikesUsed, strikeBudge
   if (binomial) appendStatHTML('SPECIES', `<span style="color:var(--p-hot);font-style:italic">${binomial}</span>`);
   appendStat('ARCHETYPE', name || '—');
   appendStat('STRIKES USED', `${strikesUsed} / ${strikeBudget}`);
-  appendStatHTML('TOTAL HITS', hitsCellHtml(hits || 0, inRadius || 0));
+  // Kill breakdown — strike vs automated point-defense (drones + rig).
+  const sk = strikeKills || 0, sb = strikeBiomass || 0;
+  const dk = droneKills || 0, db = droneBiomass || 0;
+  appendStatHTML('KILLED BY STRIKES',
+    `<span style="color:var(--amber)">${sk}</span> · <span style="color:var(--p-hot)">+${sb}</span> BIO`);
+  appendStatHTML('KILLED BY DRONES',
+    `<span style="color:var(--p-hot)">${dk}</span> · <span style="color:var(--p-hot)">+${db}</span> BIO`);
+  appendStatHTML('STRIKE ACCURACY', hitsCellHtml(sk, inRadius || 0));
   appendStat('BEST ACCURACY', accuracyPct == null ? '—' : `${Math.round(accuracyPct)}%`);
-  appendStatHTML('BIOMASS COLLECTED', `<span style="color:var(--p-hot)">+${biomassEarned || 0}</span> · TOTAL <span style="color:var(--p-hot)">${biomassTotal || 0}</span>`);
+  appendStatHTML('BIOMASS THIS WAVE', `<span style="color:var(--p-hot)">+${biomassEarned || 0}</span> · TOTAL <span style="color:var(--p-hot)">${biomassTotal || 0}</span>`);
   appendStat('RIG INTEGRITY', `${Math.round(integrity)}%`);
-  dom.endcardPrompt.textContent = '[SPACE] CONTINUE';
+  dom.endcardPrompt.textContent = '[SPACE] PREPARATION PHASE';
   dom.endcard.classList.add('show');
 }
 
@@ -362,24 +374,32 @@ export function showRunCompleteCard({ runStats, integrity }) {
   dom.endcardTitle.className = '';
   dom.endcardStats.innerHTML = '';
   appendStat('FINAL RIG INTEGRITY', `${Math.round(integrity)}%`);
-  const totalHits = runStats.waves.reduce((s, w) => s + (w.hits || 0), 0);
+  const totalStrikeKills = runStats.waves.reduce((s, w) => s + (w.strikeKills || 0), 0);
+  const totalDroneKills = runStats.waves.reduce((s, w) => s + (w.droneKills || 0), 0);
   const totalInRadius = runStats.waves.reduce((s, w) => s + (w.inRadius || 0), 0);
-  appendStatHTML('TOTAL HITS (RUN)', hitsCellHtml(totalHits, totalInRadius));
-  const totalBiomass = runStats.waves.reduce((s, w) => s + (w.biomass || 0), 0);
+  const totalStrikeBio = runStats.waves.reduce((s, w) => s + (w.strikeBiomass || 0), 0);
+  const totalDroneBio = runStats.waves.reduce((s, w) => s + (w.droneBiomass || 0), 0);
+  const totalBiomass = totalStrikeBio + totalDroneBio;
+  appendStatHTML('STRIKE KILLS (RUN)',
+    `<span style="color:var(--amber)">${totalStrikeKills}</span> · <span style="color:var(--p-hot)">+${totalStrikeBio}</span> BIO`);
+  appendStatHTML('DRONE KILLS (RUN)',
+    `<span style="color:var(--p-hot)">${totalDroneKills}</span> · <span style="color:var(--p-hot)">+${totalDroneBio}</span> BIO`);
+  appendStatHTML('STRIKE ACCURACY (RUN)', hitsCellHtml(totalStrikeKills, totalInRadius));
   appendStatHTML('TOTAL BIOMASS (RUN)', `<span style="color:var(--p-hot)">${totalBiomass}</span>`);
   // summary table
   const tbl = dom.endcardTable;
   tbl.style.display = '';
   tbl.innerHTML = `
     <thead><tr>
-      <th>WAVE</th><th>SPECIES</th><th>STRIKES</th><th>HITS</th><th>BEST ACC.</th><th>BIOMASS</th>
+      <th>WAVE</th><th>SPECIES</th><th>STRIKES</th><th>STRIKE K</th><th>DRONE K</th><th>BEST ACC.</th><th>BIOMASS</th>
     </tr></thead>
     <tbody>
       ${runStats.waves.map(w => `<tr>
         <td>${w.wave}</td>
         <td style="font-style:italic">${w.binomial || w.name}</td>
         <td>${w.strikesUsed}/${w.budget}</td>
-        <td>${hitsCellHtml(w.hits || 0, w.inRadius || 0)}</td>
+        <td><span style="color:var(--amber)">${w.strikeKills || 0}</span></td>
+        <td><span style="color:var(--p-hot)">${w.droneKills || 0}</span></td>
         <td>${w.bestAcc == null ? '—' : Math.round(w.bestAcc) + '%'}</td>
         <td style="color:var(--p-hot)">+${w.biomass || 0}</td>
       </tr>`).join('')}

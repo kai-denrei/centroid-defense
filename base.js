@@ -148,16 +148,58 @@ function spawnRipple(pool, t) {
   return false;
 }
 
+// Targeted ripple — used by drone tracers to leave an impact splash where
+// the contact (still hidden underwater) was struck. `small=true` shrinks
+// the ripple so an impact reads as a tighter splash than ambient water.
+function spawnRippleAt(pool, x, y, t, small) {
+  if (!pool) return false;
+  for (const r of pool) {
+    if (!r.alive) {
+      r.x = x; r.y = y; r.t0 = t;
+      r.maxR = small
+        ? (RIPPLE_MIN_R + Math.random() * 6)
+        : (RIPPLE_MAX_R_LO + Math.random() * (RIPPLE_MAX_R_HI - RIPPLE_MAX_R_LO));
+      r.duration = small
+        ? (0.6 + Math.random() * 0.4)
+        : (RIPPLE_DUR_LO + Math.random() * (RIPPLE_DUR_HI - RIPPLE_DUR_LO));
+      r.alive = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Per-contact ripple rate during waves. Tuned so ~12 contacts produce
+// ~4 ripples/s, leaving room in the 32-slot pool with avg 2s lifespan.
+const RIPPLE_PER_CONTACT_RATE = 0.35;
+// Per-contact jitter added to spawn position (px) so ripples don't all
+// stack on the contact's exact center.
+const RIPPLE_CONTACT_JITTER = 14;
+
 let _ripplePending = 0;
-// Procedurally seeds new ripples at RIPPLE_SPAWN_RATE per second. Call each
-// frame during build_phase. Does nothing during waves (so radar render path
-// doesn't accumulate budget).
+// Seed ripples on every frame the rig view is showing. During build_phase
+// ripples are ambient (random water annulus); during wave_running each
+// alive contact independently has a small chance to spawn a ripple at its
+// own (jittered) position so the surface telegraphs where threats lurk
+// underwater.
 export function seedRipples(state, dt, t) {
   if (!state.ripples) return;
-  _ripplePending += dt * RIPPLE_SPAWN_RATE;
-  while (_ripplePending >= 1) {
-    spawnRipple(state.ripples, t);
-    _ripplePending -= 1;
+  if (state.phase === 'build_phase') {
+    _ripplePending += dt * RIPPLE_SPAWN_RATE;
+    while (_ripplePending >= 1) {
+      spawnRipple(state.ripples, t);
+      _ripplePending -= 1;
+    }
+    return;
+  }
+  if (state.phase === 'wave_running' && state.contacts && state.contacts.length) {
+    for (const c of state.contacts) {
+      if (!c.alive) continue;
+      if (Math.random() >= dt * RIPPLE_PER_CONTACT_RATE) continue;
+      const jx = (Math.random() - 0.5) * RIPPLE_CONTACT_JITTER;
+      const jy = (Math.random() - 0.5) * RIPPLE_CONTACT_JITTER;
+      spawnRippleAt(state.ripples, c.x + jx, c.y + jy, t, /*small=*/ false);
+    }
   }
 }
 
@@ -182,24 +224,106 @@ function drawRipples(ctx, ripples, t) {
 }
 
 // ── Drone class ─────────────────────────────────────────────────────────────
+// Each drone is an independent point-defense turret: it orbits the rig at
+// its own angular speed and engages its own nearest live contact at
+// DRONE_TURRET_INTERVAL. `facing` is the latest fire angle so the chevron
+// orients toward whatever it last shot at; `lastShotAt` is the throttle.
 export function makeDrone(t) {
   return {
     angle: Math.random() * TAU,
     orbitRadius: DRONE_ORBIT + (Math.random() - 0.5) * 8,
     angularSpeed: DRONE_ANGULAR_SPEED + (Math.random() - 0.5) * 0.08,
     deployedAt: t,
+    lastShotAt: 0,
+    facing: null,             // null = orient along orbit tangent (no engagement)
   };
 }
 
-function drawDrones(ctx, drones, t, dt) {
+// World-space drone position. Used by main.js fire logic and the rig-view
+// renderer so both compute the same point each frame.
+export function dronePos(d) {
+  return {
+    x: RIG.x + Math.cos(d.angle) * d.orbitRadius,
+    y: RIG.y + Math.sin(d.angle) * d.orbitRadius,
+  };
+}
+
+// Drone / rig muzzle tracers — for each recent turret shot, draw a tracer
+// from its frozen origin (drone or rig central turret position at fire
+// time) to the target. Also spawns an impact ripple so the strike location
+// reads underwater after the tracer fades.
+function drawDroneTracers(ctx, drones, turretShots, ripples, t) {
+  if (!turretShots || !turretShots.length) return;
+  for (const shot of turretShots) {
+    const age = t - shot.t0;
+    if (age > 0.12) continue;
+    // Frozen origin (preferred — drone may have moved since fire); fallback
+    // to nearest-drone for legacy shots without ox/oy.
+    let ox = shot.ox, oy = shot.oy;
+    if (ox == null || oy == null) {
+      if (!drones || !drones.length) continue;
+      let best = null, bestD = Infinity;
+      for (const d of drones) {
+        const p = dronePos(d);
+        const dist = Math.hypot(p.x - shot.x, p.y - shot.y);
+        if (dist < bestD) { bestD = dist; best = d; }
+      }
+      if (!best) continue;
+      const p = dronePos(best);
+      ox = p.x; oy = p.y;
+    }
+    const fade = 1 - age / 0.12;
+    // tracer line — color hints at source: phosphor for rig, amber for drone
+    const isRig = shot.source === 'rig';
+    const lineRGB = isRig ? '136, 255, 136' : '255, 170, 68';
+    const flashColor = isRig ? PHOSPHOR_HOT : AMBER;
+    ctx.strokeStyle = `rgba(${lineRGB}, ${(fade * 0.85).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = flashColor;
+    ctx.shadowBlur = 6 * fade;
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(shot.x, shot.y);
+    ctx.stroke();
+    // muzzle flash at origin
+    ctx.fillStyle = `rgba(255, 245, 200, ${(fade * 0.95).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(ox, oy, 3, 0, TAU); ctx.fill();
+    // impact splash at target
+    ctx.fillStyle = `rgba(${lineRGB}, ${(fade * 0.55).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(shot.x, shot.y, 4, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    // One-shot impact ripple so a fading tracer still leaves a water mark.
+    if (!shot._rigRippleSpawned) {
+      spawnRippleAt(ripples, shot.x, shot.y, t, /*small=*/ true);
+      shot._rigRippleSpawned = true;
+    }
+  }
+}
+
+// Tick all drone orbits forward by dt. Called from update() so drone
+// positions advance even when their view (rig/radar) isn't the active
+// render path — keeps the missile-cam takeover from freezing the orbit.
+export function tickDrones(drones, dt) {
+  if (!drones) return;
+  for (const d of drones) d.angle = (d.angle + d.angularSpeed * dt) % TAU;
+}
+
+export function drawDrones(ctx, drones, t, dt) {
   if (!drones || !drones.length) return;
   ctx.save();
   ctx.translate(RIG.x, RIG.y);
   for (const d of drones) {
-    d.angle = (d.angle + d.angularSpeed * dt) % TAU;
     const x = Math.cos(d.angle) * d.orbitRadius;
     const y = Math.sin(d.angle) * d.orbitRadius;
-    const heading = d.angle + Math.PI / 2;     // tangent to orbit (forward direction)
+    // If the drone has engaged a contact recently, point at it (so the
+    // body visibly turns to track underwater targets); otherwise default
+    // to orbit-tangent so it reads as a patrolling unit.
+    const engaged = d.facing != null && d.lastShotAt && (t - d.lastShotAt < 1.5);
+    const tangent = d.angle + Math.PI / 2;
+    // chevron heading: when engaged, +PI/2 because the chevron points "up"
+    // along its local Y axis; we convert facing-angle (atan2 dy,dx) to that
+    // local frame.
+    const heading = engaged ? (d.facing + Math.PI / 2) : tangent;
     // chevron: 3 short lines forming a triangle pointing along heading
     ctx.save();
     ctx.translate(x, y);
@@ -265,7 +389,10 @@ export function drawBase(ctx, state, t, dt) {
   // (5) drones (allies — orbiting the rig)
   drawDrones(ctx, state.drones || [], t, dt);
 
-  // (6) corner readout — clinical register, tells the operator what they're seeing
+  // (6) drone muzzle tracers — show point-defense engaging hidden contacts
+  drawDroneTracers(ctx, state.drones || [], state.turretShots || [], state.ripples, t);
+
+  // (7) corner readout — clinical register, tells the operator what they're seeing
   ctx.font = '600 9px JetBrains Mono, ui-monospace, monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
@@ -273,5 +400,5 @@ export function drawBase(ctx, state, t, dt) {
   ctx.fillText('// SURFACE OBSERVATION · CASS-3 · TOP-DOWN', 12, 12);
   ctx.textAlign = 'right';
   ctx.fillStyle = `rgba(255, 170, 68, 0.7)`;
-  ctx.fillText('BUILD PHASE', W - 12, 12);
+  ctx.fillText(state.phase === 'build_phase' ? 'BUILD PHASE' : 'WAVE ACTIVE', W - 12, 12);
 }
