@@ -15,6 +15,7 @@ export const WAVES = [
     id: 1,
     name: 'TWIN PINCER',
     archetype: 'cluster',
+    headliner: 'acidoplankton-tenuis',
     strikeBudget: 2,
     spawns: [
       // North: a mixed swarm-grade shoal — light, fast, easy first kill
@@ -29,6 +30,7 @@ export const WAVES = [
     id: 2,
     name: 'CROSSFIRE',
     archetype: 'linear',
+    headliner: 'acidonecton-vorax',
     strikeBudget: 2,
     spawns: [
       // West line: chitin-mantled cephalopodiforms
@@ -43,6 +45,7 @@ export const WAVES = [
     id: 3,
     name: 'BIMODAL TRAP',
     archetype: 'bimodal',
+    headliner: 'fluorapate-rigidum',
     strikeBudget: 2,
     spawns: [
       // Two pelagic clusters separated by ~240px — naive centroid lands in the gap
@@ -56,6 +59,7 @@ export const WAVES = [
     id: 4,
     name: 'HEAVY MASS',
     archetype: 'weighted',
+    headliner: 'barytolithus-reptans',
     strikeBudget: 2,
     spawns: [
       // Light swarm decoy from west
@@ -70,6 +74,7 @@ export const WAVES = [
     id: 5,
     name: 'DRIFTER',
     archetype: 'staggered',
+    headliner: 'pyrithionyx-ferrosus',
     strikeBudget: 3,
     spawns: [
       // Slow lead group — drifters and mimics. The mimic appears small until close.

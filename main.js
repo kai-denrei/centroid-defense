@@ -16,7 +16,7 @@ import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
   fmtTime, fmtBearing, fmtRange,
   showWaveEndcard, showRunCompleteCard, showGameOverCard, hideEndcard,
-  hideIntro, showIntro, openCodex, closeCodex,
+  hideIntro, showIntro, openCodex, closeCodex, speciesById,
 } from './hud.js';
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
@@ -157,7 +157,15 @@ function startWave(idx) {
   });
   setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   hideEndcard();
-  logT(`WAVE ${idx} INBOUND — ${w.name} · ${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
+  // Headliner: binomial flavor name for the wave (the species the wave teaches)
+  const headSp = w.headliner ? speciesById(w.headliner) : null;
+  const binomial = headSp ? `${headSp.genus.toUpperCase()} ${headSp.species.toUpperCase()}` : '';
+  if (binomial) {
+    logT(`WAVE ${idx} · ${binomial} · ${w.name}`);
+    logT(`${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
+  } else {
+    logT(`WAVE ${idx} INBOUND — ${w.name} · ${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
+  }
 }
 
 function update(dt, t) {
@@ -290,8 +298,11 @@ function finishWave(t, allDestroyed) {
   const w = WAVES[state.wave - 1];
   const hits = state.waveStats.totalHits || 0;
   const inRad = state.waveStats.totalInRadius || 0;
+  const headSp = w.headliner ? speciesById(w.headliner) : null;
+  const binomial = headSp ? `${headSp.genus} ${headSp.species}` : null;
   state.runStats.waves.push({
     wave: state.wave, name: w.name, budget: w.strikeBudget,
+    binomial,
     strikesUsed: state.waveStats.strikesUsed, bestAcc: accPct,
     hits, inRadius: inRad,
     biomass: state.waveStats.biomassEarned || 0,
@@ -305,7 +316,7 @@ function finishWave(t, allDestroyed) {
     logT('EXTRACTION SECURED — ALL THREATS NEUTRALIZED');
   } else {
     showWaveEndcard({
-      wave: state.wave, name: w.name, strikesUsed: state.waveStats.strikesUsed,
+      wave: state.wave, name: w.name, binomial, strikesUsed: state.waveStats.strikesUsed,
       strikeBudget: w.strikeBudget, accuracyPct: accPct,
       hits, inRadius: inRad,
       biomassEarned: state.waveStats.biomassEarned || 0,

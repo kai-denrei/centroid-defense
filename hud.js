@@ -32,6 +32,7 @@ export function initHUD() {
   dom.codexModal = $('codex-modal');
   dom.codexClose = $('codex-close');
   dom.codexBody = $('codex-body');
+  dom.codexTabs = $('codex-tabs');
 }
 
 export function updateHUD(state) {
@@ -64,43 +65,120 @@ export function updateHUD(state) {
   if (dom.biomassVal) dom.biomassVal.textContent = String(state.biomass || 0);
 }
 
-// CODEX MODAL — render the bestiary grouped by category.
-// Locked entries (zero kills) show category + threat tier + a "not yet
-// catalogued" stub. Unlocked entries fill in the full clinical note.
-const CATEGORY_HEADS = {
-  pelagic: 'PELAGIC · MID-WATER',
-  benthic: 'BENTHIC · BOTTOM-DWELLING',
-  swarm: 'SWARM · MICRO-FAUNA',
-  apex: 'APEX · MEGAFAUNA',
-  specialist: 'SPECIALIST · IRREGULAR',
+// CODEX MODAL — tabbed bestiary view.
+// 5 category tabs at top. Active tab shown in the body. Active tab persisted
+// to localStorage. Each entry: thumb + taxon + stats + abilities + specimen
+// description + clinical field-note. Locked entries silhouette the thumb
+// and stub the text.
+const CATEGORY_LABELS = {
+  pelagic: 'PELAGIC',
+  benthic: 'BENTHIC',
+  swarm: 'SWARM',
+  apex: 'APEX',
+  specialist: 'SPECIALIST',
 };
 const CATEGORY_ORDER = ['pelagic', 'benthic', 'swarm', 'apex', 'specialist'];
+const STORAGE_KEY = 'dw-codex-tab';
+
+let _activeTab = 'pelagic';
+let _lastCodex = null;
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Format threat for the tier color class — same hierarchy as before.
+function threatClass(t) { return ['low', 'medium', 'high', 'apex'].includes(t) ? t : 'medium'; }
+
+// Each species' source PNG was numbered 01..19; that prefix maps to a stable
+// SPEC.nn caption. Since the numbers parallel BESTIARY's array order, we use
+// (index + 1) zero-padded to 2.
+function specNumFor(speciesId) {
+  const idx = BESTIARY.findIndex(s => s.id === speciesId);
+  if (idx < 0) return '??';
+  return String(idx + 1).padStart(2, '0');
+}
 
 export function renderCodex(codex) {
-  if (!dom.codexBody) return;
-  const groups = {};
-  for (const sp of BESTIARY) (groups[sp.category] ||= []).push(sp);
-  const out = [];
-  for (const cat of CATEGORY_ORDER) {
-    if (!groups[cat]) continue;
-    out.push(`<div class="group-head">${CATEGORY_HEADS[cat]}</div>`);
-    for (const sp of groups[cat]) {
-      const kills = (codex && codex[sp.id]) || 0;
-      const locked = kills === 0;
-      out.push(`<div class="entry ${locked ? 'locked' : ''}">
-        <div>
-          <div class="taxon"><span class="genus">${sp.genus}</span> <span class="species">${sp.species}</span></div>
-          <div class="meta">${sp.class} · ${sp.scale} · BIOMASS ${sp.biomass}</div>
-        </div>
-        <div>
-          <div class="threat ${sp.threat}">${sp.threat.toUpperCase()}</div>
-          <div class="kills">${locked ? '— LOCKED —' : `${kills} KILLED`}</div>
-        </div>
-        <div class="note">${locked ? '// CONTACT NOT YET CATALOGUED — STRIKE ONE TO UNLOCK' : sp.note}</div>
-      </div>`);
-    }
+  if (!dom.codexBody || !dom.codexTabs) return;
+  _lastCodex = codex;
+  // restore last tab
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved && CATEGORY_ORDER.includes(saved)) _activeTab = saved;
+  } catch (_) {}
+  // tabs
+  dom.codexTabs.innerHTML = CATEGORY_ORDER.map(cat => {
+    const active = cat === _activeTab ? 'active' : '';
+    return `<button class="codex-tab ${active}" data-cat="${cat}" type="button" role="tab" aria-selected="${cat === _activeTab}">${CATEGORY_LABELS[cat]}</button>`;
+  }).join('');
+  // body — one tab's entries
+  renderCodexBody();
+  // wire tab clicks (delegated)
+  dom.codexTabs.querySelectorAll('.codex-tab').forEach(btn => {
+    btn.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const cat = btn.getAttribute('data-cat');
+      if (!cat || cat === _activeTab) return;
+      _activeTab = cat;
+      try { localStorage.setItem(STORAGE_KEY, cat); } catch (_) {}
+      // update tab UI without rebuilding whole modal
+      dom.codexTabs.querySelectorAll('.codex-tab').forEach(b => {
+        const a = b.getAttribute('data-cat') === cat;
+        b.classList.toggle('active', a);
+        b.setAttribute('aria-selected', a ? 'true' : 'false');
+      });
+      renderCodexBody();
+    });
+  });
+}
+
+function renderCodexBody() {
+  const codex = _lastCodex || {};
+  const entries = BESTIARY.filter(sp => sp.category === _activeTab);
+  if (!entries.length) {
+    dom.codexBody.innerHTML = '<div style="color:var(--p-dim);padding:20px;text-align:center;letter-spacing:0.18em">// NO ENTRIES IN THIS TIER //</div>';
+    return;
   }
-  dom.codexBody.innerHTML = out.join('');
+  dom.codexBody.innerHTML = entries.map(sp => renderEntry(sp, codex[sp.id] || 0)).join('');
+  // scroll to top on tab change
+  dom.codexBody.scrollTop = 0;
+}
+
+function renderEntry(sp, kills) {
+  const locked = kills === 0;
+  const thumbSrc = `bestiary-img/thumb/${sp.id}.webp`;
+  const specNum = specNumFor(sp.id);
+  // thumb cell — image + spec caption (or stub if image fails)
+  const thumbHtml = `<div class="thumb-cell">
+    <img class="thumb" loading="lazy" decoding="async" src="${thumbSrc}" alt="${escapeHtml(sp.genus + ' ' + sp.species)}"
+         onerror="this.outerHTML='<div class=&quot;thumb-stub&quot;>// IMG<br>PENDING</div>';" />
+    <span class="spec-num">// SPEC.${specNum}${locked ? ' · UNCATALOGUED' : ''}</span>
+  </div>`;
+  // text block
+  const stats = locked
+    ? '<span class="lbl">HP</span> — · <span class="lbl">WT</span> — · <span class="lbl">SPD</span> — · <span class="lbl">BIO</span> — · <span class="lbl">THREAT</span> ?? · <span class="blip-swatch" style="background:transparent"></span>'
+    : `HP ${sp.hp} · WT ${sp.weight} · SPD ${sp.speed} · BIO ${sp.biomass} · THREAT ${sp.threat.toUpperCase()} · <span class="blip-swatch" style="background:${sp.blipColor}"></span>`;
+  const abilHtml = (!locked && sp.abilities && sp.abilities.length)
+    ? `<div class="abil">▸ ${sp.abilities.map(a => a.toUpperCase().replace(/-/g, ' ')).join(' · ')}</div>`
+    : '<div class="abil"></div>';
+  const desc = locked
+    ? '<span class="label">▶ SPECIMEN:</span> // SPECIMEN PHOTOGRAPH PENDING — SUBMIT FIRST KILL FOR FULL CATALOGUE ENTRY'
+    : `<span class="label">▶ SPECIMEN:</span> ${escapeHtml(sp.description || '—')}`;
+  const note = locked
+    ? '<span class="label">▶ FIELD NOTE:</span> // CONTACT NOT YET CATALOGUED — STRIKE ONE TO UNLOCK'
+    : `<span class="label">▶ FIELD NOTE:</span> ${escapeHtml(sp.note)}`;
+  return `<div class="entry ${locked ? 'locked' : ''}">
+    ${thumbHtml}
+    <div class="taxon"><span class="genus">${escapeHtml(sp.genus)}</span> <span class="species">${escapeHtml(sp.species)}</span></div>
+    <div class="meta">${escapeHtml(sp.class)} · ${escapeHtml(sp.scale)}</div>
+    <div class="threat ${threatClass(sp.threat)}">${sp.threat.toUpperCase()}</div>
+    <div class="kills">${locked ? '— LOCKED —' : `${kills} KILLED`}</div>
+    <div class="stats">${stats}</div>
+    ${abilHtml}
+    <div class="desc">${desc}</div>
+    <div class="note">${note}</div>
+  </div>`;
 }
 
 // Open / close handlers — caller wires the button events to these.
@@ -111,6 +189,9 @@ export function openCodex(codex) {
 export function closeCodex() {
   dom.codexModal.classList.add('hide');
 }
+
+// Resolve a wave's headliner species data — for binomial display in topbar/log.
+export function speciesById(id) { return BESTIARY.find(s => s.id === id); }
 
 // Rebuild the ordnance pips with charging-aware visualization.
 // budget   — total strikes for the wave (== total pips)
@@ -215,13 +296,14 @@ function hitsCellHtml(hits, inRadius) {
 }
 
 // ENDCARD — wave end, run complete, game over.
-export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accuracyPct, hits, inRadius, biomassEarned, biomassTotal, integrity, allDestroyed }) {
+export function showWaveEndcard({ wave, name, binomial, strikesUsed, strikeBudget, accuracyPct, hits, inRadius, biomassEarned, biomassTotal, integrity, allDestroyed }) {
   dom.endcardTitle.textContent = allDestroyed
     ? `WAVE ${wave} COMPLETE`
     : `WAVE ${wave} — RIG INTEGRITY CRITICAL`;
   dom.endcardTitle.className = (!allDestroyed || integrity <= 25) ? 'crit' : '';
   dom.endcardTable.style.display = 'none';
   dom.endcardStats.innerHTML = '';
+  if (binomial) appendStatHTML('SPECIES', `<span style="color:var(--p-hot);font-style:italic">${binomial}</span>`);
   appendStat('ARCHETYPE', name || '—');
   appendStat('STRIKES USED', `${strikesUsed} / ${strikeBudget}`);
   appendStatHTML('TOTAL HITS', hitsCellHtml(hits || 0, inRadius || 0));
@@ -247,12 +329,12 @@ export function showRunCompleteCard({ runStats, integrity }) {
   tbl.style.display = '';
   tbl.innerHTML = `
     <thead><tr>
-      <th>WAVE</th><th>ARCHETYPE</th><th>STRIKES</th><th>HITS</th><th>BEST ACC.</th><th>BIOMASS</th>
+      <th>WAVE</th><th>SPECIES</th><th>STRIKES</th><th>HITS</th><th>BEST ACC.</th><th>BIOMASS</th>
     </tr></thead>
     <tbody>
       ${runStats.waves.map(w => `<tr>
         <td>${w.wave}</td>
-        <td>${w.name}</td>
+        <td style="font-style:italic">${w.binomial || w.name}</td>
         <td>${w.strikesUsed}/${w.budget}</td>
         <td>${hitsCellHtml(w.hits || 0, w.inRadius || 0)}</td>
         <td>${w.bestAcc == null ? '—' : Math.round(w.bestAcc) + '%'}</td>

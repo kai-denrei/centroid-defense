@@ -701,6 +701,36 @@
     letter-spacing: 0.18em;
     text-align: center;
   }
+  /* tab strip — 5 category tabs at the top of the modal body */
+  #codex-tabs {
+    display: flex;
+    height: 32px;
+    border-bottom: 1px solid var(--p-dim);
+    padding: 0 14px;
+    gap: 0;
+    flex-shrink: 0;
+  }
+  #codex-tabs .codex-tab {
+    flex: 1;
+    min-width: 80px;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--p-mid);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    padding: 8px 4px 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: color 200ms, border-color 200ms;
+  }
+  #codex-tabs .codex-tab:hover { color: var(--p-hot); }
+  #codex-tabs .codex-tab.active {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.4);
+  }
   #codex-body {
     flex: 1;
     overflow-y: auto;
@@ -710,45 +740,76 @@
     line-height: 1.55;
     letter-spacing: 0.04em;
   }
-  #codex-body .group-head {
-    color: var(--amber);
-    font-size: 10px;
-    letter-spacing: 0.22em;
-    margin: 16px 0 6px 0;
-    border-bottom: 1px solid var(--p-dim);
-    padding-bottom: 3px;
-  }
-  #codex-body .group-head:first-child { margin-top: 0; }
   #codex-body .entry {
     display: grid;
-    grid-template-columns: 1fr 90px;
-    gap: 4px 14px;
-    padding: 8px 0;
+    grid-template-columns: 96px 1fr 88px;
+    grid-template-areas:
+      "thumb taxon  threat"
+      "thumb meta   kills"
+      "thumb stats  stats"
+      "thumb abil   abil"
+      "desc  desc   desc"
+      "note  note   note";
+    gap: 4px 12px;
+    padding: 12px 0;
     border-bottom: 1px dashed rgba(58, 140, 58, 0.25);
   }
   #codex-body .entry:last-child { border-bottom: 0; }
   #codex-body .entry.locked { opacity: 0.42; }
+  #codex-body .entry .thumb-cell {
+    grid-area: thumb;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #codex-body .entry .thumb {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border: 1px solid var(--amber-dim);
+    box-shadow: inset 0 0 6px rgba(136, 255, 136, 0.12);
+    background: var(--bg);
+    display: block;
+  }
+  #codex-body .entry.locked .thumb {
+    filter: brightness(0) saturate(0) opacity(0.55) drop-shadow(0 0 4px var(--p-dim));
+    background: rgba(15, 44, 15, 0.4);
+  }
+  #codex-body .entry .spec-num {
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .thumb-stub {
+    width: 96px; height: 96px;
+    border: 1px dashed var(--amber-dim);
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--p-dim);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-align: center;
+    line-height: 1.3;
+  }
   #codex-body .entry .taxon {
+    grid-area: taxon;
     color: var(--p-hot);
     font-weight: 600;
     font-style: italic;
     letter-spacing: 0.04em;
+    font-size: 12px;
   }
+  #codex-body .entry.locked .taxon { opacity: 0.55; }
   #codex-body .entry .taxon .genus { font-style: italic; }
   #codex-body .entry .taxon .species { font-style: italic; }
   #codex-body .entry .meta {
+    grid-area: meta;
     color: var(--p-mid);
     font-size: 10px;
     letter-spacing: 0.10em;
   }
-  #codex-body .entry .kills {
-    text-align: right;
-    color: var(--amber);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-  }
-  #codex-body .entry.locked .kills { color: var(--p-dim); }
   #codex-body .entry .threat {
+    grid-area: threat;
     text-align: right;
     font-size: 9px;
     letter-spacing: 0.16em;
@@ -757,14 +818,74 @@
   #codex-body .entry .threat.medium { color: var(--amber-dim); }
   #codex-body .entry .threat.high   { color: var(--amber); }
   #codex-body .entry .threat.apex   { color: var(--red); text-shadow: 0 0 6px rgba(255,51,34,0.4); }
-  #codex-body .entry .note {
-    grid-column: 1 / -1;
+  #codex-body .entry .kills {
+    grid-area: kills;
+    text-align: right;
+    color: var(--amber);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  #codex-body .entry.locked .kills { color: var(--p-dim); }
+  #codex-body .entry .stats {
+    grid-area: stats;
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  #codex-body .entry .stats .blip-swatch {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border: 1px solid var(--p-dim);
+    vertical-align: middle;
+  }
+  #codex-body .entry .abil {
+    grid-area: abil;
+    color: var(--amber-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .desc, #codex-body .entry .note {
     color: var(--p-mid);
     font-size: 10px;
     line-height: 1.6;
     margin-top: 2px;
   }
-  #codex-body .entry.locked .note { content: "// CONTACT NOT YET CATALOGUED — STRIKE ONE TO UNLOCK"; }
+  #codex-body .entry .desc {
+    grid-area: desc;
+    font-style: italic;
+  }
+  #codex-body .entry .desc .label,
+  #codex-body .entry .note .label {
+    color: var(--amber-dim);
+    font-style: normal;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .note { grid-area: note; }
+  /* mobile: stack thumb above text on very narrow screens */
+  @media (max-width: 380px) {
+    #codex-body .entry {
+      grid-template-columns: 1fr 88px;
+      grid-template-areas:
+        "thumb thumb"
+        "taxon threat"
+        "meta  kills"
+        "stats stats"
+        "abil  abil"
+        "desc  desc"
+        "note  note";
+    }
+    #codex-body .entry .thumb,
+    #codex-body .entry .thumb-stub {
+      width: 100%;
+      height: auto;
+      max-height: 200px;
+      aspect-ratio: 1 / 1;
+    }
+  }
 
   /* build version indicator on intro — confirms which build is running */
   #build-tag {
@@ -1074,7 +1195,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.0-α · deepdefense</div>
+        <div id="build-tag">v2.0.1-α · deepdefense</div>
       </div>
     </main>
 
@@ -1136,6 +1257,7 @@
           <span>// BESTIARY · DEEPWATCH SCIENTIFIC SURVEY</span>
           <button id="codex-close" type="button" aria-label="Close">[ × CLOSE ]</button>
         </header>
+        <div id="codex-tabs" role="tablist"></div>
         <div id="codex-body"></div>
         <footer>SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS</footer>
       </div>
@@ -1148,7 +1270,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.0-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.1-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Auto-reload when a new SW takes control. Combined with skipWaiting() in
