@@ -1272,7 +1272,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.2-α · deepdefense</div>
+        <div id="build-tag">v2.0.3-α · deepdefense</div>
       </div>
     </main>
 
@@ -1364,18 +1364,24 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.2-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.3-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      // Auto-reload when a new SW takes control. Combined with skipWaiting() in
-      // sw.js, this means a deploy reaches the user on the very next page load
-      // (instead of needing manual refresh-twice / clear-data).
-      let _swReloaded = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (_swReloaded) return;
-        _swReloaded = true;
-        window.location.reload();
-      });
+      // Register but DO NOT auto-reload on controllerchange. The earlier
+      // unconditional reload (added in v1.4.2 to fight stale-SW-on-deploy)
+      // raced with the user's first tap on the intro: tap registered, then
+      // the SW activated mid-input, the page reloaded, intro re-shown,
+      // input "lost." Symptom: "sometimes space/tap fails to register on
+      // reload."
+      //
+      // Cache-freshness now relies on:
+      //   - NetworkFirst on HTML (sw.js navigationHandler) — always tries
+      //     network first, so a fresh deploy's index.html lands within 3s.
+      //   - ?v=X.Y.Z query-string busting on `main.js` — the new HTML
+      //     references the new version, which cache-misses and fetches
+      //     network. New SW also still installs (skipWaiting + claim) for
+      //     the next navigation; current page just keeps running until
+      //     user reloads.
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
