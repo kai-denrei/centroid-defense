@@ -365,7 +365,7 @@ export function showWaveEndcard({
   appendStat('BEST ACCURACY', accuracyPct == null ? '—' : `${Math.round(accuracyPct)}%`);
   appendStatHTML('BIOMASS THIS WAVE', `<span style="color:var(--p-hot)">+${biomassEarned || 0}</span> · TOTAL <span style="color:var(--p-hot)">${biomassTotal || 0}</span>`);
   appendStat('RIG INTEGRITY', `${Math.round(integrity)}%`);
-  dom.endcardPrompt.textContent = '[SPACE] CONTINUE';
+  dom.endcardPrompt.textContent = '[SPACE] PREPARATION PHASE';
   dom.endcard.classList.add('show');
 }
 
