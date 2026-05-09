@@ -161,7 +161,8 @@ function startRun() {
   state.impactLingers = [];
   state.biomass = 0;
   state.codex = {};
-  state.drones = [];
+  // Two starter drones — rig has minimum point-defense from the first wave.
+  state.drones = [makeDrone(now()), makeDrone(now())];
   // mark all ripples inactive (the pool persists across runs)
   for (const r of state.ripples) r.alive = false;
   clearLog();

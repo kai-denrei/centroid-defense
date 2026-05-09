@@ -148,6 +148,27 @@ function spawnRipple(pool, t) {
   return false;
 }
 
+// Targeted ripple — used by drone tracers to leave an impact splash where
+// the contact (still hidden underwater) was struck. `small=true` shrinks
+// the ripple so an impact reads as a tighter splash than ambient water.
+function spawnRippleAt(pool, x, y, t, small) {
+  if (!pool) return false;
+  for (const r of pool) {
+    if (!r.alive) {
+      r.x = x; r.y = y; r.t0 = t;
+      r.maxR = small
+        ? (RIPPLE_MIN_R + Math.random() * 6)
+        : (RIPPLE_MAX_R_LO + Math.random() * (RIPPLE_MAX_R_HI - RIPPLE_MAX_R_LO));
+      r.duration = small
+        ? (0.6 + Math.random() * 0.4)
+        : (RIPPLE_DUR_LO + Math.random() * (RIPPLE_DUR_HI - RIPPLE_DUR_LO));
+      r.alive = true;
+      return true;
+    }
+  }
+  return false;
+}
+
 let _ripplePending = 0;
 // Procedurally seeds new ripples at RIPPLE_SPAWN_RATE per second. Call each
 // frame during build_phase. Does nothing during waves (so radar render path
@@ -189,6 +210,59 @@ export function makeDrone(t) {
     angularSpeed: DRONE_ANGULAR_SPEED + (Math.random() - 0.5) * 0.08,
     deployedAt: t,
   };
+}
+
+// Compute world-space drone position. Used by both render and drone-tracer.
+function dronePos(d) {
+  return {
+    x: RIG.x + Math.cos(d.angle) * d.orbitRadius,
+    y: RIG.y + Math.sin(d.angle) * d.orbitRadius,
+  };
+}
+
+// Drone muzzle tracers — for each recent state.turretShot, find the drone
+// closest to the target and draw a brief tracer line + muzzle flash. Also
+// spawns a ripple at the target position so the strike location reads
+// underwater (the contact itself stays hidden).
+function drawDroneTracers(ctx, drones, turretShots, ripples, t) {
+  if (!drones || !drones.length || !turretShots || !turretShots.length) return;
+  for (const shot of turretShots) {
+    const age = t - shot.t0;
+    if (age > 0.12) continue;
+    // pick nearest drone to the shot's target — visually believable
+    let best = null, bestD = Infinity;
+    for (const d of drones) {
+      const p = dronePos(d);
+      const dist = Math.hypot(p.x - shot.x, p.y - shot.y);
+      if (dist < bestD) { bestD = dist; best = d; }
+    }
+    if (!best) continue;
+    const p = dronePos(best);
+    const fade = 1 - age / 0.12;
+    // tracer line — amber, fades fast
+    ctx.strokeStyle = `rgba(255, 170, 68, ${(fade * 0.85).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = AMBER;
+    ctx.shadowBlur = 6 * fade;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(shot.x, shot.y);
+    ctx.stroke();
+    // muzzle flash at drone
+    ctx.fillStyle = `rgba(255, 245, 200, ${(fade * 0.95).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, TAU); ctx.fill();
+    // impact splash at target
+    ctx.fillStyle = `rgba(255, 170, 68, ${(fade * 0.55).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(shot.x, shot.y, 4, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    // First frame of the shot: spawn a ripple at the target so the impact
+    // leaves a visible water trace after the tracer fades. Single ripple
+    // per shot — `_lastRippleSpawnedAt` keyed on shot identity.
+    if (!shot._rigRippleSpawned) {
+      spawnRippleAt(ripples, shot.x, shot.y, t, /*small=*/ true);
+      shot._rigRippleSpawned = true;
+    }
+  }
 }
 
 function drawDrones(ctx, drones, t, dt) {
@@ -265,7 +339,10 @@ export function drawBase(ctx, state, t, dt) {
   // (5) drones (allies — orbiting the rig)
   drawDrones(ctx, state.drones || [], t, dt);
 
-  // (6) corner readout — clinical register, tells the operator what they're seeing
+  // (6) drone muzzle tracers — show point-defense engaging hidden contacts
+  drawDroneTracers(ctx, state.drones || [], state.turretShots || [], state.ripples, t);
+
+  // (7) corner readout — clinical register, tells the operator what they're seeing
   ctx.font = '600 9px JetBrains Mono, ui-monospace, monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
@@ -273,5 +350,5 @@ export function drawBase(ctx, state, t, dt) {
   ctx.fillText('// SURFACE OBSERVATION · CASS-3 · TOP-DOWN', 12, 12);
   ctx.textAlign = 'right';
   ctx.fillStyle = `rgba(255, 170, 68, 0.7)`;
-  ctx.fillText('BUILD PHASE', W - 12, 12);
+  ctx.fillText(state.phase === 'build_phase' ? 'BUILD PHASE' : 'WAVE ACTIVE', W - 12, 12);
 }
