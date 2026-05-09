@@ -58,6 +58,7 @@ const camPane = document.getElementById('cam-pane');
 const safetyBtn = document.getElementById('safety-switch');
 const safetyImg = document.getElementById('safety-img');
 const launchBtn = document.getElementById('launch-btn');
+const launchLatinEl = document.getElementById('launch-latin');
 const launchStatusEl = document.getElementById('launch-status');
 const launchTargetEl = document.getElementById('launch-target');
 // seabase v1 — build phase controls
@@ -596,10 +597,19 @@ function updateLaunchConsole() {
     const target = armed ? 'icons/switch-on.png' : 'icons/switch-off.png';
     if (!safetyImg.src.endsWith(target)) safetyImg.src = target;
   }
-  // launch button
-  launchBtn.classList.toggle('ready', ready && !armed);
+  // launch button — three explicit visual states:
+  //   default (grey)   — not ready, OR safety still ON (player should arm)
+  //   .target (orange) — armed, no target locked → "発射 TARGET"
+  //   .armed  (red)    — armed + target locked → "発射 LAUNCH"
+  launchBtn.classList.toggle('target', ready && armed && !hasTarget);
   launchBtn.classList.toggle('armed', ready && armed && hasTarget);
   launchBtn.disabled = !(ready && armed && hasTarget);
+  // Latin sub-label switches between TARGET (awaiting designation) and
+  // LAUNCH (commitable). Kanji 発射 stays static — it's the verb either way.
+  if (launchLatinEl) {
+    const latin = (ready && armed && !hasTarget) ? 'TARGET' : 'LAUNCH';
+    if (launchLatinEl.textContent !== latin) launchLatinEl.textContent = latin;
+  }
   // status readout
   let status, statusClass;
   if (state.pendingStrikes.length && !ready && state.reservedStrikes === 0 && state.gauge === 0) {

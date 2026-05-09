@@ -609,15 +609,21 @@
     letter-spacing: 0.22em;
     margin-top: 1px;
   }
-  .launch-button.ready {
-    background: radial-gradient(circle at 35% 30%, #ff5544, #aa0000 65%, #550000);
-    color: rgba(255, 255, 255, 0.55);
-    border-color: #6a1010;
-    box-shadow:
-      0 0 12px rgba(255, 51, 34, 0.4),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.45),
-      inset 0 2px 0 rgba(255, 255, 255, 0.12);
-    cursor: not-allowed;
+  /* Safety ON, no target locked yet — orange "発射 TARGET" cue. Slow pulse
+     reads as "next step needed" (set the target on the radar). Visually
+     enabled even though disabled at the DOM level — clicks are filtered
+     in commitLaunch via flickerOrdnance. */
+  .launch-button.target {
+    background: radial-gradient(circle at 35% 30%, #ffb255, #ff7a14 60%, #b04400);
+    color: #fff;
+    border-color: #c25a14;
+    cursor: pointer;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+    animation: targetPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes targetPulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(255, 130, 40, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.12); }
+    50%      { box-shadow: 0 0 20px rgba(255, 130, 40, 0.95), inset 0 -3px 0 rgba(0, 0, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.18); }
   }
   .launch-button.armed {
     background: radial-gradient(circle at 35% 30%, #ff7766, #cc1010 60%, #660000);
@@ -1472,7 +1478,7 @@
      where the intro is on screen but its pointerdown handler isn't bound
      yet — taps in that window were silently lost ("space/tap to begin
      sometimes fails on reload"). -->
-<link rel="modulepreload" href="./main.js?v=2.0.17-seabase">
+<link rel="modulepreload" href="./main.js?v=2.0.18-seabase">
 <script>
   // Pre-init dismissal capture. Runs synchronously during HTML parse,
   // long before main.js evaluates, so any tap or [SPACE] the user does
@@ -1547,7 +1553,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.17-α · seabase</div>
+        <div id="build-tag">v2.0.18-α · seabase</div>
       </div>
     </main>
 
@@ -1632,7 +1638,7 @@
           </div>
           <button id="launch-btn" class="launch-button" type="button" disabled aria-label="Launch">
             <span class="kanji">発射</span>
-            <span class="latin">LAUNCH</span>
+            <span class="latin" id="launch-latin">LAUNCH</span>
           </button>
           <button id="view-toggle-radar" class="view-toggle" type="button" aria-label="Return to rig view">
             <span class="ico">◀</span>
@@ -1685,7 +1691,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.17-seabase"></script>
+  <script type="module" src="./main.js?v=2.0.18-seabase"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
