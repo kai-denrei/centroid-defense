@@ -428,6 +428,17 @@
     letter-spacing: 0.18em;
     animation: blink 1s steps(2) infinite;
   }
+  /* build version indicator on intro — confirms which build is running */
+  #build-tag {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    opacity: 0.7;
+  }
+
   /* tiny corner tag for vibe */
   .corner-tag {
     position: absolute;
@@ -686,7 +697,7 @@
       <div id="intro">
         <h1>DEEPWATCH</h1>
         <p>EXTRACTION PLATFORM CASS-3 · OPERATOR ON SONAR · SUBSURFACE CONTACTS INBOUND</p>
-        <p>READ THE PPI · TAP TO COMMIT DEPTH-CHARGE STRIKE · 1.2s SINK DELAY · DAMAGE FALLS OFF FROM CENTROID</p>
+        <p>READ THE PPI · TAP TO COMMIT ORBITAL STRIKE · 2.4s SINK DELAY · DAMAGE FALLS OFF FROM CENTROID</p>
         <p>AUTO-TURRET HANDLES CLOSE-RANGE TRICKLE · IT WILL NOT SAVE YOU</p>
         <div class="prompt">[SPACE] OR TAP TO BEGIN</div>
         <button id="install-btn" type="button">⏷ INSTALL</button>
@@ -694,6 +705,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
+        <div id="build-tag">v1.4.2</div>
       </div>
     </main>
 
@@ -737,9 +749,18 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=1.4.1"></script>
+  <script type="module" src="./main.js?v=1.4.2"></script>
   <script>
     if ('serviceWorker' in navigator) {
+      // Auto-reload when a new SW takes control. Combined with skipWaiting() in
+      // sw.js, this means a deploy reaches the user on the very next page load
+      // (instead of needing manual refresh-twice / clear-data).
+      let _swReloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (_swReloaded) return;
+        _swReloaded = true;
+        window.location.reload();
+      });
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
