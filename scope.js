@@ -366,8 +366,11 @@ function camDims() {
   return (typeof window !== 'undefined' && window.__camDims) || { w: 200, h: 120 };
 }
 
-export function drawMissileCam(ctx, state, t) {
-  const { w: CAM_W, h: CAM_H } = camDims();
+export function drawMissileCam(ctx, state, t, dims) {
+  // dims optional — pass { w, h } to render the cam at a non-default size
+  // (the seabase v2 launch takeover renders the cam fullscreen on the main
+  // scope canvas).
+  const { w: CAM_W, h: CAM_H } = dims || camDims();
   // base wipe — black no-feed
   ctx.fillStyle = '#020602';
   ctx.fillRect(0, 0, CAM_W, CAM_H);

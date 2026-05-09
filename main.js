@@ -413,24 +413,35 @@ function renderRadar(t) {
   }
 }
 
-// Render dispatch — rig view is the home during waves; player toggles to radar
-// to engage. Build_phase and wave_running+rig both use drawBase. Non-wave
-// phases (intro, endcard, game_over) keep the radar's frozen state behind
-// their overlays.
+// Render dispatch — three modes during waves:
+//   - cam:    main scope is taken over by the missile cam (in-flight + linger)
+//   - rig:    sea-base view; the home during waves
+//   - radar:  PPI scope; opt-in via the toggle to fire missiles
+// Build_phase always uses rig; non-wave phases (intro, endcard, game_over)
+// keep the radar's frozen state behind their overlays.
 function isRigView() {
   return state.phase === 'build_phase'
       || (state.phase === 'wave_running' && state.viewMode === 'rig');
 }
+function isCamView() {
+  return state.phase === 'wave_running'
+      && (state.pendingStrikes.length > 0 || state.impactLingers.length > 0);
+}
+const FULLSCREEN_CAM_DIMS = { w: 720, h: 720 };
 let _prevRenderMode = null;
 function render(t, dt) {
-  const mode = isRigView() ? 'rig' : 'radar';
+  let mode;
+  if (isCamView()) mode = 'cam';
+  else if (isRigView()) mode = 'rig';
+  else mode = 'radar';
   // Full-clear on mode switch — renderRadar uses smearScope (partial fade),
-  // so without this the rig water gradient would bleed through for ~1s.
+  // so without this the rig water gradient or cam frame would bleed through.
   if (mode !== _prevRenderMode) {
     clearScope(ctx);
     _prevRenderMode = mode;
   }
-  if (mode === 'rig') drawBase(ctx, state, t, dt);
+  if (mode === 'cam') drawMissileCam(ctx, state, t, FULLSCREEN_CAM_DIMS);
+  else if (mode === 'rig') drawBase(ctx, state, t, dt);
   else renderRadar(t);
 }
 
