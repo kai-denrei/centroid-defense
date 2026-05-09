@@ -266,6 +266,10 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    /* Fixed width keeps the safety switch anchored. Without this, the pane
+       resizes with the status-text length and the switch shifts horizontally
+       between phases (STANDBY vs LAUNCH AUTHORIZED · TGT 234/1820). */
+    width: 280px;
   }
   #launch-header {
     color: var(--amber-dim);
@@ -500,16 +504,29 @@
   }
   #log {
     flex: 1;
-    overflow-y: hidden;
+    /* No scrollbar — display text on separate lines, wrap when needed.
+       justify-content: flex-end keeps the LATEST entry visible at the
+       bottom of the strip; older entries overflow upward and get clipped
+       by the parent's overflow: hidden. */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
     color: var(--amber);
     font-size: 12px;
     letter-spacing: 0.04em;
-    line-height: 1.5;
+    line-height: 1.45;
     text-shadow: 0 0 4px rgba(255, 170, 68, 0.25);
+    flex-shrink: 0;
   }
   #log .line {
-    white-space: nowrap;
+    /* allow long entries to wrap onto a second visual line rather than
+       overflow horizontally and trigger a scroll bar */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     opacity: 0.85;
+    flex-shrink: 0;
   }
   #log .line.fresh { opacity: 1.0; }
   #log .line.crit  { color: var(--red); text-shadow: 0 0 6px rgba(255, 51, 34, 0.5); }
@@ -1163,7 +1180,14 @@
       line-height: 1.3;
       letter-spacing: 0.04em;
     }
-    #log .line:not(:last-child) { display: none; }   /* show only newest */
+    /* Mobile: only the newest line, single-line with ellipsis. The 28-px
+       strip can't accommodate wrapping. */
+    #log .line:not(:last-child) { display: none; }
+    #log .line {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     /* LAUNCH CONSOLE on mobile — full-width strip between comms and cam */
     #launch-pane {
       flex: 0 0 86px;
@@ -1275,7 +1299,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.6-α · deepdefense</div>
+        <div id="build-tag">v2.0.7-α · deepdefense</div>
       </div>
     </main>
 
@@ -1369,7 +1393,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.6-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.7-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
