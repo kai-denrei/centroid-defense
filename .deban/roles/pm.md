@@ -41,6 +41,12 @@ Owns the v1 thesis ("is the centroid-strike loop satisfying enough to carry a TD
 | 2026-05-09 | Locked-species visual = CSS-filtered silhouette of the thumbnail (green-tinted ghost), NOT blur or blank icon; flagged for revisit if photographic silhouettes leak too much shape | Period-correct sonar-record aesthetic; best-of-three options for a single CSS filter rule | [[ux]] |
 | 2026-05-09 | Detail-image viewer (lightbox / tap-thumb-to-zoom) deferred to v2.1; detail webps generated in this pass to unblock v2.1 immediately | Doubles modal complexity for a feature that's nice-to-have at v1; assets cost zero runtime weight when not wired up | [[dev]] |
 | 2026-05-09 | Build version bumps to v2.0.1-α · deepdefense after dev's bestiary pass; do NOT push to main | deepdefense is exploratory v2-track; main is locked under v1 directives | [[devops]] |
+| 2026-05-09 | Detail-image lightbox unblocked → shipped in v2.0.2-α (was deferred to v2.1) | Greenlit by Gerald: "clicking an unlocked beast should bring its image." Cost was UI-only — assets shipped in v2.0a | [[dev]], [[ux]] |
+| 2026-05-09 | Per-component versioning convention: `v.1.x` tag next to panel headers, bumped per-panel iteration | Per Gerald: visible verification of which iteration of a panel is running, separate from the global build tag | [[ux]], [[arch]] |
+| 2026-05-09 | Stochastic motion design boundary (v2.0.5-α): randomness layers must be zero-mean over a group; centroid stays the hittable target. Six concrete layers locked: per-individual gaussian speed noise, species-relative pool scaling, sinusoidal swim wobble, Gaussian cluster sampling, spawn-time stagger, reduced jitter | Centroid skill is the game; protecting it is the constraint that makes other randomness safe to add. Any future "interesting motion" feature must satisfy zero-mean | [[dev]], [[arch]] |
+| 2026-05-09 | Vertical metal toggle replaces SAFE/ARM (v2.0.6-α); OFF/ON labels; satisfying mechanical click + 100ms metal-body thunk | Gerald supplied the PNG art. Real-hardware metaphor reads as more tactile than the abstract horizontal slider. Three-register audio bracket (click / beep / click+thud) preserved | [[ux]] |
+| 2026-05-09 | Layout-stability fixes (v2.0.7-α) classified as dev/arch concerns, not PM scope changes | Gerald reported visual drift between phases and a horizontal scrollbar; these are CSS bugs (no gameplay impact), not feature-scope decisions | [[dev]], [[arch]] |
+| 2026-05-09 | SW auto-reload removed from index.html (v2.0.3-α); freshness via NetworkFirst HTML + ?v= query bust on JS modules is sufficient | Gerald reported intermittent space/tap failure on reload; root cause was the auto-reload race window. Fix is removal, not retry | [[devops]], [[dev]] |
 
 ## Dead Ends
 | Date | What was tried | Why it failed / was rejected |
@@ -66,4 +72,5 @@ Blocked by:
 Feeds into: [[arch]], [[dev]], [[ux]], [[qa]]
 
 ## Session Log
+- 2026-05-09 — v2.0a bestiary directive issued (PM-DIRECTIVE-v2.0a-bestiary.md) → v2.0.2 lightbox unblock → input-race diagnosed and SW auto-reload removed → vertical-toggle UX directive → layout-stability fixes classified as CSS bugs not scope changes. deepdefense at v2.0.7-α.
 - 2026-05-08 — INIT: scoped v1 thesis, locked tap-to-commit/1.2s/no-ghost-wedge defaults, surfaced 5 untested assumptions
