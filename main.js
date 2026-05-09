@@ -58,6 +58,11 @@ const buildBiomassEl = document.getElementById('build-biomass');
 const buildTimerEl = document.getElementById('build-timer');
 const buildReadyBtn = document.getElementById('build-ready');
 const deployDroneBtn = document.getElementById('deploy-drone');
+// seabase v2 — in-wave rig view + view toggle
+const rigMissileEl = document.getElementById('rig-missile-count');
+const rigBiomassEl = document.getElementById('rig-biomass');
+const viewToggleRig = document.getElementById('view-toggle-rig');     // on rig-pane → switch to radar
+const viewToggleRadar = document.getElementById('view-toggle-radar'); // on launch-pane → switch to rig
 
 // Canonical 720-logical-px coordinate space. Backing store = cssSize × dpr.
 // On every resize, ctx.setTransform(dpr * scaleFactor, ...) once — game logic
@@ -127,6 +132,9 @@ const state = {
   buildPhaseStartedAt: 0,
   drones: [],                      // persists across waves within a run
   ripples: initRipplePool(),       // pool of 32, all start inactive
+  // seabase v2 — rig view is home during waves; player toggles to radar to fire.
+  // After every detonation, viewMode auto-reverts to 'rig'.
+  viewMode: 'rig',                 // 'rig' | 'radar' (only meaningful when wave_running)
   contacts: [], blips: [],
   detonations: [], turretShots: [],
   centroidMarker: null,
@@ -201,6 +209,7 @@ function startWave(idx) {
     biomassThisWave: 0,
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
+    viewMode: 'rig',                  // every wave begins on the rig — toggle to radar to engage
   });
   setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   hideEndcard();
@@ -216,9 +225,10 @@ function startWave(idx) {
 }
 
 function update(dt, t) {
-  // Build phase tick — seed ripples + auto-advance after BUILD_PHASE_DURATION
+  // Ripples animate whenever we're showing the sea-base (build phase OR in-wave rig view).
+  if (isRigView()) seedRipples(state, dt, t);
+  // Build phase tick — auto-advance after BUILD_PHASE_DURATION
   if (state.phase === 'build_phase') {
-    seedRipples(state, dt, t);
     if (t - state.buildPhaseStartedAt >= BUILD_PHASE_DURATION) endBuildPhase();
     return;
   }
@@ -335,6 +345,8 @@ function detonate(strike, t) {
   detonation();
   const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
   logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%) · +${biomass} BIOMASS`);
+  // Auto-revert to rig view after every detonation (seabase v2 design).
+  if (state.phase === 'wave_running') state.viewMode = 'rig';
 }
 
 function triggerGameOver(t) {
@@ -401,15 +413,44 @@ function renderRadar(t) {
   }
 }
 
-// Renders Mode B (Sea Base, between waves). Only active during build_phase;
-// other non-wave phases (intro, endcard, game_over) keep the radar's frozen
-// state behind their overlays.
+// Render dispatch — rig view is the home during waves; player toggles to radar
+// to engage. Build_phase and wave_running+rig both use drawBase. Non-wave
+// phases (intro, endcard, game_over) keep the radar's frozen state behind
+// their overlays.
+function isRigView() {
+  return state.phase === 'build_phase'
+      || (state.phase === 'wave_running' && state.viewMode === 'rig');
+}
+let _prevRenderMode = null;
 function render(t, dt) {
-  if (state.phase === 'build_phase') {
-    drawBase(ctx, state, t, dt);
-  } else {
-    renderRadar(t);
+  const mode = isRigView() ? 'rig' : 'radar';
+  // Full-clear on mode switch — renderRadar uses smearScope (partial fade),
+  // so without this the rig water gradient would bleed through for ~1s.
+  if (mode !== _prevRenderMode) {
+    clearScope(ctx);
+    _prevRenderMode = mode;
   }
+  if (mode === 'rig') drawBase(ctx, state, t, dt);
+  else renderRadar(t);
+}
+
+// View toggle — only meaningful during wave_running. Build_phase always rig;
+// non-wave phases ignore.
+function toggleView() {
+  if (state.phase !== 'wave_running') return;
+  state.viewMode = state.viewMode === 'rig' ? 'radar' : 'rig';
+  // safety always re-engages on view exit so the player must re-arm each visit
+  if (state.viewMode === 'rig') {
+    state.safetyOff = false;
+    state.targetReticle = null;
+  }
+  safetyClick();
+}
+
+// Keep #body class in sync each frame so CSS can swap pane visibility cheaply.
+function syncViewClass() {
+  const inWaveRig = state.phase === 'wave_running' && state.viewMode === 'rig';
+  document.body.classList.toggle('view-rig', inWaveRig);
 }
 
 function frame(nowMs) {
@@ -421,10 +462,25 @@ function frame(nowMs) {
   render(t, dt);
   drawMissileCam(camCtx, state, t);
   camRec.style.visibility = state.pendingStrikes.length ? 'visible' : 'hidden';
+  syncViewClass();
   updateLaunchConsole();
   updateBuildConsole(t);
+  updateRigConsole();
   updateHUD(state);
   requestAnimationFrame(frame);
+}
+
+// Rig pane HUD — missile count + biomass readout. Cheap text writes.
+function updateRigConsole() {
+  if (!rigMissileEl) return;
+  const total = state.readyStrikes + state.reservedStrikes + (state.gauge > 0 ? 0 : 0);
+  if (rigMissileEl.textContent !== String(state.readyStrikes)) {
+    rigMissileEl.textContent = String(state.readyStrikes);
+  }
+  rigMissileEl.classList.toggle('zero', state.readyStrikes <= 0);
+  if (rigBiomassEl && rigBiomassEl.textContent !== String(state.biomass | 0)) {
+    rigBiomassEl.textContent = String(state.biomass | 0);
+  }
 }
 
 // Build-pane HUD updates — runs every frame, cheap (DOM text writes only).
@@ -596,6 +652,18 @@ buildReadyBtn.addEventListener('pointerdown', (ev) => {
   ev.preventDefault(); ev.stopPropagation();
   if (state.phase === 'build_phase') endBuildPhase();
 });
+
+// View toggle — both buttons share the same handler. One lives on the
+// rig-pane (rig→radar), the other on the launch-pane (radar→rig).
+function bindViewToggle(btn) {
+  if (!btn) return;
+  btn.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    toggleView();
+  });
+}
+bindViewToggle(viewToggleRig);
+bindViewToggle(viewToggleRadar);
 
 // Codex modal toggle (v2 bestiary).
 const codexBtn = document.getElementById('codex-btn');

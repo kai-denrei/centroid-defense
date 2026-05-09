@@ -365,6 +365,90 @@
     border-color: var(--amber);
   }
 
+  /* ── RIG (SEA-BASE) PANE — in-wave home view ────────────────────────────
+     Shares the launch-pane slot during wave_running when viewMode === 'rig'.
+     Hidden by default; shown when body has `.view-rig` class. */
+  body.view-rig #launch-pane { display: none; }
+  #rig-pane {
+    display: none;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 280px;
+  }
+  body.view-rig #rig-pane { display: flex; }
+  #rig-header {
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  #rig-readout {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+  }
+  #rig-readout .status {
+    color: var(--p-hot);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.4);
+  }
+  #rig-readout .resource-line {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+  }
+  #rig-readout .resource-line span {
+    color: var(--p-hot);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  #rig-readout .resource-line span.zero {
+    color: var(--p-dim);
+  }
+  /* View toggle button — same shape on both panes (rig/launch).
+     Amber accent so it reads as the operator action that swaps consoles. */
+  .view-toggle {
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    font-family: var(--mono);
+    cursor: pointer;
+    padding: 0;
+    transition: background 180ms, border-color 180ms, color 180ms;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 70px; height: 64px;
+  }
+  .view-toggle .ico {
+    font-size: 14px;
+    color: var(--amber);
+    line-height: 1;
+  }
+  .view-toggle .lbl {
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    line-height: 1.1;
+  }
+  .view-toggle:hover, .view-toggle:active {
+    background: rgba(255, 170, 68, 0.08);
+    border-color: var(--amber);
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.5);
+  }
+
   /* ── LAUNCH CONSOLE ─────────────────────────────────────────────────────
      Multi-phase launch UI. Safety toggle on the left, status readout in
      the middle, big red 発射 button on the right with yellow/black caution
@@ -1295,14 +1379,24 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* LAUNCH/BUILD CONSOLES on mobile — full-width strip between comms and cam */
-    #launch-pane, #build-pane {
+    /* LAUNCH/BUILD/RIG CONSOLES on mobile — full-width strip between comms and cam */
+    #launch-pane, #build-pane, #rig-pane {
       flex: 0 0 86px;
       width: 100dvw;
       padding: 4px 6px 6px;
     }
-    body.phase-build #launch-pane { display: none; }
+    body.phase-build #launch-pane,
+    body.view-rig #launch-pane    { display: none; }
     body:not(.phase-build) #build-pane { display: none; }
+    body:not(.view-rig) #rig-pane      { display: none; }
+    body.view-rig #rig-pane            { display: flex; }
+    /* Rig pane mobile sizing — mirror the build pane */
+    #rig-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
+    #rig-readout .status { font-size: 10px; }
+    #rig-readout .resource-line { font-size: 9px; }
+    .view-toggle { width: 70px; height: 56px; }
+    .view-toggle .lbl { font-size: 8px; }
+    .view-toggle .ico { font-size: 12px; }
     #build-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
     .build-frame {
       padding: 4px 8px;
@@ -1423,7 +1517,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.8-α · seabase</div>
+        <div id="build-tag">v2.0.9-α · seabase</div>
       </div>
     </main>
 
@@ -1472,11 +1566,29 @@
         </div>
       </div>
 
+      <div id="rig-pane">
+        <div id="rig-header">
+          <span>// SEA STATION · CONN</span>
+          <span class="comp-ver">v.1.0</span>
+        </div>
+        <div id="rig-console" class="caution-frame build-frame">
+          <div id="rig-readout">
+            <div class="status">STATION OPERATIONAL</div>
+            <div class="resource-line">MISSILES <span id="rig-missile-count">0</span> · BIOMASS <span id="rig-biomass">0</span></div>
+          </div>
+          <button id="view-toggle-rig" class="view-toggle" type="button" aria-label="Switch to missile control">
+            <span class="ico">▶</span>
+            <span class="lbl">MISSILE</span>
+            <span class="lbl">CONTROL</span>
+          </button>
+        </div>
+      </div>
+
       <div id="launch-pane">
         <div id="launch-header">
           <span>// LAUNCH CONTROL</span>
           <!-- per-component version. bump on each launch-console iteration. -->
-          <span class="comp-ver">v.1.1</span>
+          <span class="comp-ver">v.1.2</span>
         </div>
         <div id="launch-console" class="caution-frame">
           <button id="safety-switch" class="safety" type="button" aria-pressed="false" aria-label="Safety">
@@ -1491,6 +1603,11 @@
           <button id="launch-btn" class="launch-button" type="button" disabled aria-label="Launch">
             <span class="kanji">発射</span>
             <span class="latin">LAUNCH</span>
+          </button>
+          <button id="view-toggle-radar" class="view-toggle" type="button" aria-label="Return to rig view">
+            <span class="ico">◀</span>
+            <span class="lbl">RIG</span>
+            <span class="lbl">VIEW</span>
           </button>
         </div>
       </div>
@@ -1538,7 +1655,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.8-seabase"></script>
+  <script type="module" src="./main.js?v=2.0.9-seabase"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
