@@ -36,9 +36,15 @@ const IMPACT_LINGER = 0.55;    // seconds the cam shows post-detonation aftermat
 const BUILD_PHASE_DURATION = 25.0;   // seconds between waves to spend biomass
 const DRONE_COST = 20;
 // Independent point-defense intervals. Each turret picks its own nearest
-// live contact and fires; effective rate scales linearly with drone count.
+// live contact within its engagement range and fires; effective rate
+// scales linearly with drone count.
 const RIG_TURRET_INTERVAL = 0.55;
 const DRONE_TURRET_INTERVAL = 0.95;
+// Engagement ranges. Basic drones are last-line defense — they only see
+// contacts close to the rig (upgrade tiers later may extend this). The rig
+// central auto-turret has full scope range.
+const DRONE_RANGE_BASIC = 130;
+const RIG_RANGE = 320;          // = SCOPE_R; full board
 // Rig-central turret muzzle position — anchored at the amber turret marker
 // on the baked rig sprite (top of rig hex). Imported via const for clarity.
 const RIG_TURRET_OFFSET_Y = -35;     // ≈ RIG_RADIUS * 0.4 (see base.js)
@@ -301,19 +307,19 @@ function update(dt, t) {
     for (const ps of due) detonate(ps, t);
   }
   // Point-defense — rig central turret + each drone fires independently at
-  // its own nearest live contact. Armored species (Barytolithus, Megacidodon,
-  // Architeuthys, Ferrobacterium-soak) take 50% turret damage.
-  // Rig central
+  // its own nearest live contact within range. Armored species (Barytolithus,
+  // Megacidodon, Architeuthys, Ferrobacterium-soak) take 50% turret damage.
+  // Drones are last-line defense (DRONE_RANGE_BASIC); rig central reaches
+  // the full scope.
   if (t - state.turretLastShotAt >= RIG_TURRET_INTERVAL) {
-    if (firePointDefense(t, RIG.x, RIG.y + RIG_TURRET_OFFSET_Y, 'rig', null)) {
+    if (firePointDefense(t, RIG.x, RIG.y + RIG_TURRET_OFFSET_Y, 'rig', null, RIG_RANGE)) {
       state.turretLastShotAt = t;
     }
   }
-  // Each drone — their own throttle, own target
   for (const d of state.drones) {
     if (t - (d.lastShotAt || 0) < DRONE_TURRET_INTERVAL) continue;
     const dp = dronePos(d);
-    firePointDefense(t, dp.x, dp.y, 'drone', d);
+    firePointDefense(t, dp.x, dp.y, 'drone', d, DRONE_RANGE_BASIC);
   }
   // prune transient effects
   state.detonations = state.detonations.filter(d => t - d.t0 < 0.6);
@@ -325,15 +331,16 @@ function update(dt, t) {
   if (allSpawned && live === 0 && state.pendingStrikes.length === 0) finishWave(t, true);
 }
 
-// Single shared point-defense fire path: pick the nearest live contact to
-// (originX, originY), apply armored-aware damage, push a turretShot record
-// (with the frozen origin so renderers draw from where it actually fired),
-// update the optional firing drone's facing + throttle.
-function firePointDefense(t, originX, originY, source, drone) {
+// Single shared point-defense fire path: pick the nearest live contact
+// within `range` of (originX, originY), apply armored-aware damage, push a
+// turretShot record (with the frozen origin so renderers draw from where
+// it actually fired), update the optional firing drone's facing + throttle.
+function firePointDefense(t, originX, originY, source, drone, range) {
   let best = null, bestD = Infinity;
   for (const c of state.contacts) {
     if (!c.alive) continue;
     const dist = Math.hypot(c.x - originX, c.y - originY);
+    if (dist > range) continue;
     if (dist < bestD) { bestD = dist; best = c; }
   }
   if (!best) return false;
@@ -341,6 +348,10 @@ function firePointDefense(t, originX, originY, source, drone) {
   const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
   best.hp -= dmg;
   state.turretShots.push({ ox: originX, oy: originY, x: best.x, y: best.y, t0: t, source });
+  // Cumulative shot tally (survives the per-frame prune). Used by tests +
+  // any future HUD wanting to display lifetime fire counts.
+  state.shotsFired = state.shotsFired || { rig: 0, drone: 0 };
+  state.shotsFired[source] = (state.shotsFired[source] || 0) + 1;
   if (drone) {
     drone.facing = Math.atan2(best.y - originY, best.x - originX);
     drone.lastShotAt = t;
@@ -383,6 +394,19 @@ function detonate(strike, t) {
   detonation();
   const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
   logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%) · +${biomass} BIOMASS`);
+  // Friendly fire — drones inside the strike radius are destroyed. The
+  // operator pays a real cost for sloppy targeting near the rig.
+  if (state.drones && state.drones.length) {
+    const before = state.drones.length;
+    state.drones = state.drones.filter(d => {
+      const p = dronePos(d);
+      return Math.hypot(p.x - strike.x, p.y - strike.y) > STRIKE_RADIUS;
+    });
+    const lost = before - state.drones.length;
+    if (lost > 0) {
+      logT(`DRONE LOSS — ${lost} ASSET${lost > 1 ? 'S' : ''} CAUGHT IN FRIENDLY BLAST`, { crit: true });
+    }
+  }
   // Auto-revert to rig view after every detonation (seabase v2 design).
   if (state.phase === 'wave_running') state.viewMode = 'rig';
 }

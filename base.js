@@ -169,16 +169,37 @@ function spawnRippleAt(pool, x, y, t, small) {
   return false;
 }
 
+// Per-contact ripple rate during waves. Tuned so ~12 contacts produce
+// ~4 ripples/s, leaving room in the 32-slot pool with avg 2s lifespan.
+const RIPPLE_PER_CONTACT_RATE = 0.35;
+// Per-contact jitter added to spawn position (px) so ripples don't all
+// stack on the contact's exact center.
+const RIPPLE_CONTACT_JITTER = 14;
+
 let _ripplePending = 0;
-// Procedurally seeds new ripples at RIPPLE_SPAWN_RATE per second. Call each
-// frame during build_phase. Does nothing during waves (so radar render path
-// doesn't accumulate budget).
+// Seed ripples on every frame the rig view is showing. During build_phase
+// ripples are ambient (random water annulus); during wave_running each
+// alive contact independently has a small chance to spawn a ripple at its
+// own (jittered) position so the surface telegraphs where threats lurk
+// underwater.
 export function seedRipples(state, dt, t) {
   if (!state.ripples) return;
-  _ripplePending += dt * RIPPLE_SPAWN_RATE;
-  while (_ripplePending >= 1) {
-    spawnRipple(state.ripples, t);
-    _ripplePending -= 1;
+  if (state.phase === 'build_phase') {
+    _ripplePending += dt * RIPPLE_SPAWN_RATE;
+    while (_ripplePending >= 1) {
+      spawnRipple(state.ripples, t);
+      _ripplePending -= 1;
+    }
+    return;
+  }
+  if (state.phase === 'wave_running' && state.contacts && state.contacts.length) {
+    for (const c of state.contacts) {
+      if (!c.alive) continue;
+      if (Math.random() >= dt * RIPPLE_PER_CONTACT_RATE) continue;
+      const jx = (Math.random() - 0.5) * RIPPLE_CONTACT_JITTER;
+      const jy = (Math.random() - 0.5) * RIPPLE_CONTACT_JITTER;
+      spawnRippleAt(state.ripples, c.x + jx, c.y + jy, t, /*small=*/ false);
+    }
   }
 }
 
