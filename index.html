@@ -1472,7 +1472,7 @@
      where the intro is on screen but its pointerdown handler isn't bound
      yet — taps in that window were silently lost ("space/tap to begin
      sometimes fails on reload"). -->
-<link rel="modulepreload" href="./main.js?v=2.0.14-seabase">
+<link rel="modulepreload" href="./main.js?v=2.0.15-seabase">
 <script>
   // Pre-init dismissal capture. Runs synchronously during HTML parse,
   // long before main.js evaluates, so any tap or [SPACE] the user does
@@ -1547,7 +1547,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.14-α · seabase</div>
+        <div id="build-tag">v2.0.15-α · seabase</div>
       </div>
     </main>
 
@@ -1685,7 +1685,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.14-seabase"></script>
+  <script type="module" src="./main.js?v=2.0.15-seabase"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier

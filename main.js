@@ -207,7 +207,11 @@ function startWave(idx) {
     contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
     centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
-    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0, biomassEarned: 0 },
+    waveStats: {
+      strikesUsed: 0, bestAccuracyPx: null,
+      strikeKills: 0, strikeBiomass: 0, totalInRadius: 0,
+      droneKills: 0, droneBiomass: 0,
+    },
     biomassThisWave: 0,
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
@@ -343,9 +347,13 @@ function firePointDefense(t, originX, originY, source, drone) {
   }
   if (best.hp <= 0) {
     best.alive = false;
-    state.biomass += best.biomass || 0;
-    state.biomassThisWave += best.biomass || 0;
-    state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + (best.biomass || 0);
+    const bio = best.biomass || 0;
+    state.biomass += bio;
+    state.biomassThisWave += bio;
+    // Both the rig-central turret and per-drone turrets count as
+    // "automated point defense" for the wave breakdown.
+    state.waveStats.droneKills = (state.waveStats.droneKills || 0) + 1;
+    state.waveStats.droneBiomass = (state.waveStats.droneBiomass || 0) + bio;
     if (best.speciesId) state.codex[best.speciesId] = (state.codex[best.speciesId] || 0) + 1;
   }
   return true;
@@ -360,12 +368,13 @@ function detonate(strike, t) {
     state.waveStats.bestAccuracyPx = (state.waveStats.bestAccuracyPx == null)
       ? accPx : Math.min(state.waveStats.bestAccuracyPx, accPx);
   }
-  // hit-count + biomass + codex bookkeeping
-  state.waveStats.totalHits = (state.waveStats.totalHits || 0) + killed;
+  // strike-kill bookkeeping (tracked separately from drone kills for the
+  // wave-end breakdown).
+  state.waveStats.strikeKills = (state.waveStats.strikeKills || 0) + killed;
+  state.waveStats.strikeBiomass = (state.waveStats.strikeBiomass || 0) + biomass;
   state.waveStats.totalInRadius = (state.waveStats.totalInRadius || 0) + inCount;
   state.biomass += biomass;
   state.biomassThisWave += biomass;
-  state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + biomass;
   for (const id of killedSpeciesIds) {
     state.codex[id] = (state.codex[id] || 0) + 1;
   }
@@ -390,16 +399,23 @@ function finishWave(t, allDestroyed) {
   const accPct = state.waveStats.bestAccuracyPx == null ? null
     : Math.max(0, 1 - state.waveStats.bestAccuracyPx / STRIKE_RADIUS) * 100;
   const w = WAVES[state.wave - 1];
-  const hits = state.waveStats.totalHits || 0;
-  const inRad = state.waveStats.totalInRadius || 0;
+  const ws = state.waveStats;
+  const strikeKills = ws.strikeKills || 0;
+  const strikeBiomass = ws.strikeBiomass || 0;
+  const droneKills = ws.droneKills || 0;
+  const droneBiomass = ws.droneBiomass || 0;
+  const hits = strikeKills + droneKills;
+  const inRad = ws.totalInRadius || 0;
+  const biomassEarned = strikeBiomass + droneBiomass;
   const headSp = w.headliner ? speciesById(w.headliner) : null;
   const binomial = headSp ? `${headSp.genus} ${headSp.species}` : null;
   state.runStats.waves.push({
     wave: state.wave, name: w.name, budget: w.strikeBudget,
     binomial,
-    strikesUsed: state.waveStats.strikesUsed, bestAcc: accPct,
+    strikesUsed: ws.strikesUsed, bestAcc: accPct,
     hits, inRadius: inRad,
-    biomass: state.waveStats.biomassEarned || 0,
+    strikeKills, strikeBiomass, droneKills, droneBiomass,
+    biomass: biomassEarned,
     integrity: state.rigIntegrity,
   });
   state.runStats.wavesCleared = state.wave;
@@ -410,14 +426,16 @@ function finishWave(t, allDestroyed) {
     logT('EXTRACTION SECURED — ALL THREATS NEUTRALIZED');
   } else {
     showWaveEndcard({
-      wave: state.wave, name: w.name, binomial, strikesUsed: state.waveStats.strikesUsed,
-      strikeBudget: w.strikeBudget, accuracyPct: accPct,
+      wave: state.wave, name: w.name, binomial,
+      strikesUsed: ws.strikesUsed, strikeBudget: w.strikeBudget,
+      accuracyPct: accPct,
       hits, inRadius: inRad,
-      biomassEarned: state.waveStats.biomassEarned || 0,
+      strikeKills, strikeBiomass, droneKills, droneBiomass,
+      biomassEarned,
       biomassTotal: state.biomass,
       integrity: state.rigIntegrity, allDestroyed,
     });
-    logT(`WAVE ${state.wave} CLEAR — +${state.waveStats.biomassEarned || 0} BIOMASS COLLECTED · TOTAL ${state.biomass}`);
+    logT(`WAVE ${state.wave} CLEAR — STRIKES ${strikeKills} (+${strikeBiomass}) · DRONES ${droneKills} (+${droneBiomass}) · TOTAL ${state.biomass}`);
   }
 }
 
