@@ -33,6 +33,11 @@ export function initHUD() {
   dom.codexClose = $('codex-close');
   dom.codexBody = $('codex-body');
   dom.codexTabs = $('codex-tabs');
+  dom.bestiaryDetail = $('bestiary-detail');
+  dom.bestiaryDetailImg = $('bestiary-detail-img');
+  dom.bestiaryDetailSpec = $('bestiary-detail-spec');
+  dom.bestiaryDetailTaxon = $('bestiary-detail-taxon');
+  dom.bestiaryDetailMeta = $('bestiary-detail-meta');
 }
 
 export function updateHUD(state) {
@@ -141,8 +146,16 @@ function renderCodexBody() {
     return;
   }
   dom.codexBody.innerHTML = entries.map(sp => renderEntry(sp, codex[sp.id] || 0)).join('');
-  // scroll to top on tab change
   dom.codexBody.scrollTop = 0;
+  // wire detail-lightbox: thumb on unlocked entry → open detail viewer
+  dom.codexBody.querySelectorAll('.entry:not(.locked) .thumb').forEach(img => {
+    img.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const id = img.getAttribute('data-species-id');
+      if (id) openBestiaryDetail(id);
+    });
+  });
 }
 
 function renderEntry(sp, kills) {
@@ -152,6 +165,7 @@ function renderEntry(sp, kills) {
   // thumb cell — image + spec caption (or stub if image fails)
   const thumbHtml = `<div class="thumb-cell">
     <img class="thumb" loading="lazy" decoding="async" src="${thumbSrc}" alt="${escapeHtml(sp.genus + ' ' + sp.species)}"
+         data-species-id="${sp.id}"
          onerror="this.outerHTML='<div class=&quot;thumb-stub&quot;>// IMG<br>PENDING</div>';" />
     <span class="spec-num">// SPEC.${specNum}${locked ? ' · UNCATALOGUED' : ''}</span>
   </div>`;
@@ -188,6 +202,35 @@ export function openCodex(codex) {
 }
 export function closeCodex() {
   dom.codexModal.classList.add('hide');
+  closeBestiaryDetail();   // also dismiss any stacked lightbox
+}
+
+// Detail-image lightbox — opens above the codex modal when an unlocked thumb
+// is clicked. Loads the higher-resolution detail webp (~80KB). Close on
+// backdrop / X / ESC.
+export function openBestiaryDetail(speciesId) {
+  const sp = BESTIARY.find(s => s.id === speciesId);
+  if (!sp || !dom.bestiaryDetail) return;
+  const detailSrc = `bestiary-img/detail/${sp.id}.webp`;
+  dom.bestiaryDetailImg.src = detailSrc;
+  dom.bestiaryDetailImg.alt = `${sp.genus} ${sp.species} — specimen plate`;
+  dom.bestiaryDetailImg.onerror = () => {
+    dom.bestiaryDetailImg.style.display = 'none';
+  };
+  dom.bestiaryDetailImg.style.display = '';
+  dom.bestiaryDetailSpec.textContent = `// SPECIMEN PLATE · SPEC.${specNumFor(sp.id)}`;
+  dom.bestiaryDetailTaxon.innerHTML = `<span class="genus">${escapeHtml(sp.genus)}</span> <span class="species">${escapeHtml(sp.species)}</span>`;
+  dom.bestiaryDetailMeta.textContent = `${sp.class} · ${sp.scale}`;
+  dom.bestiaryDetail.classList.remove('hide');
+}
+
+export function closeBestiaryDetail() {
+  if (!dom.bestiaryDetail) return;
+  dom.bestiaryDetail.classList.add('hide');
+}
+
+export function isBestiaryDetailOpen() {
+  return dom.bestiaryDetail && !dom.bestiaryDetail.classList.contains('hide');
 }
 
 // Resolve a wave's headliner species data — for binomial display in topbar/log.

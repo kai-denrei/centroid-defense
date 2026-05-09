@@ -17,6 +17,7 @@ import {
   fmtTime, fmtBearing, fmtRange,
   showWaveEndcard, showRunCompleteCard, showGameOverCard, hideEndcard,
   hideIntro, showIntro, openCodex, closeCodex, speciesById,
+  closeBestiaryDetail, isBestiaryDetailOpen,
 } from './hud.js';
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
@@ -516,8 +517,25 @@ codexClose.addEventListener('pointerdown', (ev) => {
   closeCodex();
 });
 codexModal.addEventListener('pointerdown', (ev) => {
-  // tap on backdrop closes, tap on frame does not
   if (ev.target === codexModal) { ev.preventDefault(); closeCodex(); }
+});
+
+// Bestiary detail lightbox (v2.0.2). Opened by clicking an unlocked thumb.
+const bestiaryDetail = document.getElementById('bestiary-detail');
+const bestiaryDetailClose = document.getElementById('bestiary-detail-close');
+bestiaryDetailClose.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  closeBestiaryDetail();
+});
+bestiaryDetail.addEventListener('pointerdown', (ev) => {
+  // backdrop tap closes; clicks on the frame are absorbed by descendants
+  if (ev.target === bestiaryDetail) { ev.preventDefault(); closeBestiaryDetail(); }
+});
+window.addEventListener('keydown', (ev) => {
+  if (ev.code === 'Escape' && isBestiaryDetailOpen()) {
+    ev.preventDefault();
+    closeBestiaryDetail();
+  }
 });
 
 function advanceFromPrompt() {

@@ -5,7 +5,7 @@
 // install a fresh cache and old caches are evicted on activate. Asset query
 // strings (?v=ASSET_VER) on top-level scripts must be in lockstep.
 
-const CACHE_VERSION = 'v2.0.1-alpha';
+const CACHE_VERSION = 'v2.0.2-alpha';
 const PRECACHE = `dw-precache-${CACHE_VERSION}`;
 const RUNTIME  = `dw-runtime-${CACHE_VERSION}`;
 const BESTIARY_CACHE = `dw-bestiary-${CACHE_VERSION}`;   // separate bucket for codex art

@@ -701,6 +701,83 @@
     letter-spacing: 0.18em;
     text-align: center;
   }
+  /* ── BESTIARY DETAIL LIGHTBOX ─────────────────────────────────────────
+     Opens on click of an unlocked thumb. Stacks above #codex-modal at a
+     higher z-index. Close on backdrop tap, X button, or ESC key. */
+  .modal.lightbox { z-index: 70; background: rgba(2, 5, 2, 0.96); }
+  .lightbox-frame {
+    width: min(900px, 96vw);
+    max-height: 92vh;
+    background: var(--bg-chrome);
+    border: 1px solid var(--p-mid);
+    box-shadow: 0 0 28px rgba(136, 255, 136, 0.22);
+    display: flex;
+    flex-direction: column;
+  }
+  .lightbox-frame header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--p-dim);
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    flex-shrink: 0;
+  }
+  .lightbox-frame header button {
+    background: transparent;
+    border: 0;
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+  }
+  .lightbox-image-wrap {
+    flex: 1;
+    min-height: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    overflow: hidden;
+  }
+  #bestiary-detail-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border: 1px solid var(--amber-dim);
+    box-shadow: inset 0 0 8px rgba(136, 255, 136, 0.12);
+    display: block;
+  }
+  #bestiary-detail-caption {
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--p-dim);
+    text-align: center;
+    flex-shrink: 0;
+  }
+  #bestiary-detail-caption .taxon {
+    color: var(--p-hot);
+    font-style: italic;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 8px rgba(136, 255, 136, 0.4);
+  }
+  #bestiary-detail-caption .meta {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    margin-top: 3px;
+  }
+  /* unlocked thumbs hint at clickability */
+  #codex-body .entry:not(.locked) .thumb { cursor: zoom-in; }
+  #codex-body .entry:not(.locked) .thumb:hover {
+    box-shadow: 0 0 10px rgba(136, 255, 136, 0.45), inset 0 0 6px rgba(136, 255, 136, 0.12);
+    border-color: var(--amber);
+  }
+
   /* tab strip — 5 category tabs at the top of the modal body */
   #codex-tabs {
     display: flex;
@@ -1195,7 +1272,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.1-α · deepdefense</div>
+        <div id="build-tag">v2.0.2-α · deepdefense</div>
       </div>
     </main>
 
@@ -1262,6 +1339,23 @@
         <footer>SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS</footer>
       </div>
     </div>
+
+    <!-- Bestiary detail-image lightbox — opens on click of an unlocked thumb -->
+    <div id="bestiary-detail" class="modal lightbox hide">
+      <div class="lightbox-frame">
+        <header>
+          <span id="bestiary-detail-spec">// SPECIMEN PLATE · SPEC.??</span>
+          <button id="bestiary-detail-close" type="button" aria-label="Close">[ × CLOSE ]</button>
+        </header>
+        <div class="lightbox-image-wrap">
+          <img id="bestiary-detail-img" alt="" />
+        </div>
+        <div id="bestiary-detail-caption">
+          <div class="taxon" id="bestiary-detail-taxon"></div>
+          <div class="meta" id="bestiary-detail-meta"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="rotate-hint">
@@ -1270,7 +1364,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.1-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.2-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Auto-reload when a new SW takes control. Combined with skipWaiting() in
