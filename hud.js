@@ -1,6 +1,10 @@
 // hud.js — DOM updates for HUD chrome. The scope canvas is sacred; this file
 // only touches HTML elements outside it.
 
+// All ES module imports must live at the top of the file (browsers parse
+// strictly even though Node hoists). The codex modal needs the bestiary.
+import { BESTIARY } from './bestiary.js';
+
 const dom = {};
 function $(id) { return document.getElementById(id); }
 
@@ -63,7 +67,6 @@ export function updateHUD(state) {
 // CODEX MODAL — render the bestiary grouped by category.
 // Locked entries (zero kills) show category + threat tier + a "not yet
 // catalogued" stub. Unlocked entries fill in the full clinical note.
-import { BESTIARY } from './bestiary.js';
 const CATEGORY_HEADS = {
   pelagic: 'PELAGIC · MID-WATER',
   benthic: 'BENTHIC · BOTTOM-DWELLING',

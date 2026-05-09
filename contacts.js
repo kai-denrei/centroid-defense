@@ -9,11 +9,14 @@ export const STRIKE_MAX_DMG = 100;
 export const STRIKE_K = 1.5;       // falloff exponent — k=1.5 rewards precision without making near-misses worthless
 export const STRIKE_DELAY = 2.4;   // seconds — sink time for the missile cinematic
 
+// Bestiary lookups for the species-driven Contact factory and weighted
+// pool resolution in materializeSpawn.
+import { SPECIES_BY_ID, DEFAULT_SPECIES_ID, pickSpecies } from './bestiary.js';
+
 // Contact factory. v2: species-driven. Stats (hp, weight, speed, biomass,
 // blipColor, jitterAmp, abilities) are pulled from the bestiary entry.
 // Per-contact ±15% RNG variance on hp keeps killcount-based gameplay honest
 // without making the centroid math unstable.
-import { SPECIES_BY_ID, DEFAULT_SPECIES_ID } from './bestiary.js';
 
 export function makeContact(x, y, vx, vy, opts = {}) {
   // back-compat: opts may be a number (weight) or an object
@@ -55,7 +58,6 @@ export function toward(cx, cy, s) {
 //     (weighted pick). Each contact gets its own species roll → real diversity
 //     within a single spawn (e.g., a swarm with 70% Acidoplankton + 30%
 //     Sulfovermis). aim: 'rig' overrides per-contact velocity to head at rig.
-import { pickSpecies, SPECIES_BY_ID, DEFAULT_SPECIES_ID } from './bestiary.js';
 export function materializeSpawn(spawn) {
   const out = [];
   const { count, formation, center, spread, vx = 0, vy = 18, axis = 'x', aim, species } = spawn;
