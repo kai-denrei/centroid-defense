@@ -5,9 +5,10 @@
 // install a fresh cache and old caches are evicted on activate. Asset query
 // strings (?v=ASSET_VER) on top-level scripts must be in lockstep.
 
-const CACHE_VERSION = 'v1.5.0';
+const CACHE_VERSION = 'v2.0.12-seabase';
 const PRECACHE = `dw-precache-${CACHE_VERSION}`;
 const RUNTIME  = `dw-runtime-${CACHE_VERSION}`;
+const BESTIARY_CACHE = `dw-bestiary-${CACHE_VERSION}`;   // separate bucket for codex art
 const ASSET_VER = CACHE_VERSION.replace(/^v/, '');
 
 const PRECACHE_URLS = [
@@ -19,6 +20,8 @@ const PRECACHE_URLS = [
   './hud.js',
   './audio.js',
   './waves.js',
+  './bestiary.js',
+  './base.js',
   './offline.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -26,6 +29,8 @@ const PRECACHE_URLS = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon-180.png',
   './icons/favicon-32.png',
+  './icons/switch-on.png',
+  './icons/switch-off.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -39,7 +44,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(
-      keys.filter((k) => k !== PRECACHE && k !== RUNTIME).map((k) => caches.delete(k))
+      keys.filter((k) => k !== PRECACHE && k !== RUNTIME && k !== BESTIARY_CACHE).map((k) => caches.delete(k))
     );
     if (self.registration.navigationPreload) {
       try { await self.registration.navigationPreload.enable(); } catch (_) {}
@@ -63,7 +68,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (req.destination === 'image') {
-    event.respondWith(cacheFirst(req, RUNTIME));
+    // bestiary art lives in its own cache so it can be evicted independently
+    const bucket = url.pathname.startsWith('/bestiary-img/') || url.pathname.includes('/bestiary-img/')
+      ? BESTIARY_CACHE : RUNTIME;
+    event.respondWith(cacheFirst(req, bucket));
     return;
   }
   if (req.destination === 'manifest') {

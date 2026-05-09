@@ -137,24 +137,40 @@ export function drawSweep(ctx, sweepAngle) {
 }
 
 // Blips: each as bloom (large faint) + core (small bright). Decay handled by caller.
+// Parse '#rrggbb' (or short '#rgb') into "r,g,b" string for rgba() interpolation.
+function hexToRgb(hex) {
+  if (!hex || hex[0] !== '#') return '136,255,136';
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+const RGB_CACHE = new Map();
+function rgbCached(hex) {
+  if (!RGB_CACHE.has(hex)) RGB_CACHE.set(hex, hexToRgb(hex));
+  return RGB_CACHE.get(hex);
+}
+
 export function drawBlips(ctx, blips, now) {
   for (const b of blips) {
     const age = now - b.t0;
     const TAU_DECAY = 1.5;
     const alpha = Math.exp(-age / TAU_DECAY);
     if (alpha < 0.02) continue;
-    const r = 3 + b.weight * 1.4;            // weight scales blip size
+    const scale = b.blipScale != null ? b.blipScale : 1.0;
+    const r = (3 + b.weight * 1.4) * scale;
+    const rgb = b.blipColor ? rgbCached(b.blipColor) : '136,255,136';
     // bloom
     const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 4.5);
-    grad.addColorStop(0, `rgba(136, 255, 136, ${0.55 * alpha})`);
-    grad.addColorStop(0.4, `rgba(136, 255, 136, ${0.18 * alpha})`);
-    grad.addColorStop(1, 'rgba(136, 255, 136, 0)');
+    grad.addColorStop(0, `rgba(${rgb}, ${0.55 * alpha})`);
+    grad.addColorStop(0.4, `rgba(${rgb}, ${0.18 * alpha})`);
+    grad.addColorStop(1, `rgba(${rgb}, 0)`);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(b.x, b.y, r * 4.5, 0, TAU);
     ctx.fill();
-    // core
-    ctx.fillStyle = `rgba(220, 255, 220, ${alpha})`;
+    // hot core — desaturate toward white for legibility
+    ctx.fillStyle = `rgba(240, 255, 240, ${alpha})`;
     ctx.beginPath();
     ctx.arc(b.x, b.y, r * 0.55, 0, TAU);
     ctx.fill();
@@ -350,8 +366,11 @@ function camDims() {
   return (typeof window !== 'undefined' && window.__camDims) || { w: 200, h: 120 };
 }
 
-export function drawMissileCam(ctx, state, t) {
-  const { w: CAM_W, h: CAM_H } = camDims();
+export function drawMissileCam(ctx, state, t, dims) {
+  // dims optional — pass { w, h } to render the cam at a non-default size
+  // (the seabase v2 launch takeover renders the cam fullscreen on the main
+  // scope canvas).
+  const { w: CAM_W, h: CAM_H } = dims || camDims();
   // base wipe — black no-feed
   ctx.fillStyle = '#020602';
   ctx.fillRect(0, 0, CAM_W, CAM_H);
@@ -736,4 +755,307 @@ function drawCamFooter(ctx, info, CAM_W, CAM_H) {
     ctx.textAlign = 'left';
     ctx.fillText('NO MUNITION', 4, CAM_H - 4);
   }
+}
+
+// ─── FULLSCREEN MISSILE-CAM ──────────────────────────────────────────────
+// Tuned for the main scope canvas (720×720). Reuses the small-cam logic
+// for in-flight zoom + linger flash, but with proportional text/lines so
+// the takeover reads as a real cinematic feed instead of a blown-up strip.
+//
+// All sizing derives from `u = min(W,H) / 24` — at 720 logical px this
+// gives u=30 (≈ a comfortable line height for big readouts).
+
+export function drawMissileCamFullscreen(ctx, state, t) {
+  const W_ = W, H_ = H;
+  // base wipe
+  ctx.fillStyle = '#020602';
+  ctx.fillRect(0, 0, W_, H_);
+
+  const linger = pickRecent(state.impactLingers, t, IMPACT_LINGER);
+  if (linger) {
+    drawCamFullInFlightFrame(ctx, state, null, t, W_, H_, /*staticOnly*/ true);
+    drawCamFullLinger(ctx, linger, t, W_, H_);
+    return;
+  }
+  const strike = state.pendingStrikes && state.pendingStrikes.length
+    ? state.pendingStrikes.reduce((a, b) => a.t0 < b.t0 ? a : b)
+    : null;
+  if (strike) {
+    drawCamFullInFlightFrame(ctx, state, strike, t, W_, H_, /*staticOnly*/ false);
+    return;
+  }
+  // No active strike or linger: caller shouldn't have routed here, but be
+  // safe — render a static background so the canvas isn't undefined.
+  drawCamFullStatic(ctx, 0.06, t, W_, H_);
+}
+
+function drawCamFullInFlightFrame(ctx, state, strike, t, W_, H_, staticOnly) {
+  const u = Math.min(W_, H_) / 24;        // ≈30 px at 720
+  const cx = W_ / 2, cy = H_ / 2;
+  const progress = strike ? Math.min(1, (t - strike.t0) / STRIKE_DELAY) : 0;
+  const ez = progress * progress * (3 - 2 * progress);
+
+  // depth-tinted background — greener as we close
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, H_ * 0.7);
+  grad.addColorStop(0, `rgba(20, ${52 + 36 * progress}, 20, 1)`);
+  grad.addColorStop(1, '#020602');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W_, H_);
+
+  // Cam shake escalates with proximity (only when in-flight, not on linger fade)
+  if (!staticOnly && strike) {
+    const shakeIntensity = (0.6 + progress * 2.4 + (progress > 0.85 ? (progress - 0.85) * 18 : 0)) * 1.2;
+    const sx = (Math.random() - 0.5) * shakeIntensity;
+    const sy = (Math.random() - 0.5) * shakeIntensity;
+    ctx.save();
+    ctx.translate(sx, sy);
+  }
+
+  if (strike) {
+    const viewR = CAM_VIEW_FAR - (CAM_VIEW_FAR - CAM_VIEW_NEAR) * ez;
+    const scale = (Math.min(W_, H_) / 2) / viewR;
+
+    // contact silhouettes — scaled up, more visible
+    for (const c of state.contacts) {
+      if (!c.alive) continue;
+      const dx = c.x - strike.x, dy = c.y - strike.y;
+      if (Math.hypot(dx, dy) > viewR * 1.3) continue;
+      const sx = cx + dx * scale;
+      const sy = cy + dy * scale;
+      const baseR = (10 + c.weight * 4.5) * (0.7 + 1.6 * progress);
+      const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, baseR * 2.2);
+      sg.addColorStop(0, 'rgba(0, 0, 0, 0.85)');
+      sg.addColorStop(0.55, 'rgba(0, 0, 0, 0.55)');
+      sg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(sx, sy, baseR * 2.2, 0, TAU); ctx.fill();
+      if (progress > 0.30) {
+        const pulse = 0.5 + 0.5 * Math.sin(t * 8 + sx);
+        ctx.fillStyle = `rgba(140, 210, 140, ${(progress - 0.30) * (0.55 + 0.4 * pulse)})`;
+        ctx.beginPath(); ctx.arc(sx, sy, baseR * 0.45, 0, TAU); ctx.fill();
+      }
+    }
+
+    // blast-radius dashed ring — generous size
+    const blastRpx = STRIKE_RADIUS * scale;
+    if (blastRpx > 12 && blastRpx < W_ * 0.7) {
+      ctx.strokeStyle = `rgba(255, 170, 68, ${0.30 + 0.50 * progress})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 10]);
+      ctx.beginPath(); ctx.arc(cx, cy, blastRpx, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Big crosshair — generous, gold/amber
+  drawCamFullCrosshair(ctx, cx, cy, u);
+  // corner brackets
+  drawCamFullCorners(ctx, W_, H_, u);
+
+  // static + scanlines (denser at start, calmer near impact)
+  drawCamFullStatic(ctx, 0.04 + 0.10 * (1 - progress), t, W_, H_);
+  drawCamFullScanlines(ctx, t, W_, H_);
+
+  // approach glitches in the last 30%
+  if (!staticOnly && strike && progress > 0.7 && Math.random() < 0.12) {
+    ctx.fillStyle = `rgba(255, 255, 220, ${0.04 + 0.10 * Math.random()})`;
+    ctx.fillRect(0, 0, W_, H_);
+  }
+  // terminal flash on the final 1.5%
+  if (!staticOnly && strike && progress >= 0.985) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${1 - (1 - progress) / 0.015})`;
+    ctx.fillRect(0, 0, W_, H_);
+  }
+
+  if (!staticOnly && strike) ctx.restore();    // end shake transform
+
+  // ── HEADER ───────────────────────────────────────────────────────────
+  ctx.font = `600 ${Math.round(u * 0.55)}px JetBrains Mono, ui-monospace, monospace`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(58, 140, 58, 0.85)';
+  ctx.fillText('CH3 · CHARGE OPTICS', u * 0.6, u * 0.4);
+
+  // stage chips — ON · SET · LAUNCH · IMPACT (right-aligned, big)
+  if (strike) drawCamFullStageChips(ctx, progress, W_, H_, u);
+  else {
+    // linger phase — IMPACT highlighted
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 51, 34, 0.95)';
+    ctx.font = `700 ${Math.round(u * 0.7)}px JetBrains Mono, ui-monospace, monospace`;
+    ctx.fillText('// IMPACT', W_ - u * 0.6, u * 0.4);
+  }
+
+  // ── FOOTER ───────────────────────────────────────────────────────────
+  if (strike) {
+    const tgtCount = state.contacts.filter(c => c.alive
+      && Math.hypot(c.x - strike.x, c.y - strike.y) <= STRIKE_RADIUS).length;
+    const depth = Math.round((1 - progress) * 1200);
+    // depth right
+    ctx.font = `700 ${Math.round(u * 0.85)}px JetBrains Mono, ui-monospace, monospace`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(136, 255, 136, 0.92)';
+    ctx.shadowColor = HOT;
+    ctx.shadowBlur = 8;
+    ctx.fillText(`DEPTH ${String(depth).padStart(4, '0')}M`, W_ - u * 0.6, H_ - u * 0.5);
+    ctx.shadowBlur = 0;
+    // tgt left
+    ctx.textAlign = 'left';
+    ctx.fillStyle = tgtCount > 0 ? 'rgba(255, 170, 68, 0.95)' : 'rgba(58, 140, 58, 0.7)';
+    if (tgtCount > 0) { ctx.shadowColor = AMBER; ctx.shadowBlur = 8; }
+    ctx.fillText(`TGT ${tgtCount}`, u * 0.6, H_ - u * 0.5);
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawCamFullCrosshair(ctx, cx, cy, u) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 170, 68, 0.65)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = AMBER;
+  ctx.shadowBlur = 6;
+  // crosshair arms — inner gap of 0.4u, arm length 1.5u
+  const inner = u * 0.4, arm = u * 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - arm, cy); ctx.lineTo(cx - inner, cy);
+  ctx.moveTo(cx + inner, cy); ctx.lineTo(cx + arm, cy);
+  ctx.moveTo(cx, cy - arm); ctx.lineTo(cx, cy - inner);
+  ctx.moveTo(cx, cy + inner); ctx.lineTo(cx, cy + arm);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // center dot
+  ctx.fillStyle = 'rgba(255, 170, 68, 0.8)';
+  ctx.beginPath(); ctx.arc(cx, cy, 2, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+function drawCamFullCorners(ctx, W_, H_, u) {
+  ctx.strokeStyle = 'rgba(58, 140, 58, 0.65)';
+  ctx.lineWidth = 2;
+  const m = u * 0.5;        // margin from edge
+  const k = u * 0.9;        // bracket arm length
+  const corners = [
+    [m, m, +k, 0], [m, m, 0, +k],
+    [W_ - m, m, -k, 0], [W_ - m, m, 0, +k],
+    [m, H_ - m, +k, 0], [m, H_ - m, 0, -k],
+    [W_ - m, H_ - m, -k, 0], [W_ - m, H_ - m, 0, -k],
+  ];
+  for (const [x, y, dx, dy] of corners) {
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
+  }
+}
+
+function drawCamFullStageChips(ctx, progress, W_, H_, u) {
+  ctx.save();
+  ctx.font = `700 ${Math.round(u * 0.55)}px JetBrains Mono, ui-monospace, monospace`;
+  ctx.textBaseline = 'top';
+  const stages = [
+    { label: 'ON',     active: true },
+    { label: 'SET',    active: true },
+    { label: 'LAUNCH', active: true },
+    { label: 'IMPACT', active: progress > 0.85 },
+  ];
+  // right-anchored row
+  const y = u * 0.45;
+  let xRight = W_ - u * 0.6;
+  for (let i = stages.length - 1; i >= 0; i--) {
+    const s = stages[i];
+    const isImpact = s.label === 'IMPACT';
+    const c = s.active
+      ? (isImpact ? 'rgba(255, 51, 34, 0.98)' : 'rgba(255, 170, 68, 0.92)')
+      : 'rgba(58, 140, 58, 0.4)';
+    ctx.fillStyle = c;
+    if (s.active) {
+      ctx.shadowColor = isImpact ? RED : AMBER;
+      ctx.shadowBlur = isImpact ? 8 : 4;
+    }
+    ctx.textAlign = 'right';
+    const w = ctx.measureText(s.label).width + u * 0.55;       // text + dot + spacing
+    ctx.fillText(s.label, xRight, y);
+    // dot to the left of the label
+    ctx.beginPath();
+    ctx.arc(xRight - ctx.measureText(s.label).width - u * 0.25, y + u * 0.25, u * 0.13, 0, TAU);
+    ctx.fill();
+    xRight -= w + u * 0.45;
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+}
+
+function drawCamFullStatic(ctx, intensity, t, W_, H_) {
+  const dots = Math.floor(W_ * H_ * intensity / 40);
+  for (let i = 0; i < dots; i++) {
+    const x = Math.floor(Math.random() * W_);
+    const y = Math.floor(Math.random() * H_);
+    const v = Math.random();
+    if (v < 0.45) ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    else if (v < 0.78) ctx.fillStyle = 'rgba(20, 50, 20, 0.7)';
+    else ctx.fillStyle = `rgba(${130 + Math.random() * 80 | 0}, ${200 + Math.random() * 55 | 0}, ${130 + Math.random() * 80 | 0}, ${0.4 + 0.5 * Math.random()})`;
+    ctx.fillRect(x, y, 2, 2);
+  }
+}
+
+function drawCamFullScanlines(ctx, t, W_, H_) {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+  for (let y = 1; y < H_; y += 4) ctx.fillRect(0, y, W_, 2);
+  // sweeping band — VHS tracking line
+  const sweepY = ((t * 80) % (H_ + 80)) - 40;
+  ctx.fillStyle = 'rgba(140, 220, 140, 0.06)';
+  ctx.fillRect(0, sweepY, W_, 18);
+}
+
+function drawCamFullLinger(ctx, linger, t, W_, H_) {
+  const u = Math.min(W_, H_) / 24;
+  const cx = W_ / 2, cy = H_ / 2;
+  const age = t - linger.t0;
+  const tProg = Math.min(1, age / IMPACT_LINGER);
+  const tier = hitTier(linger.killed || 0, linger.inRadius || 0);
+  const fadeIn = Math.min(1, age / 0.10);
+  const fadeOut = 1 - tProg;
+  const alpha = fadeIn * fadeOut;
+
+  // bright white-hot flash (decays)
+  ctx.fillStyle = `rgba(255, 245, 200, ${0.6 * fadeOut})`;
+  ctx.fillRect(0, 0, W_, H_);
+
+  // expanding shock ring
+  const ringR = Math.min(W_, H_) * (0.10 + tProg * 0.45);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = `rgba(${tier.rgb}, ${fadeOut * 0.85})`;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = tier.hex;
+  ctx.shadowBlur = 30 * fadeOut;
+  ctx.beginPath(); ctx.arc(0, 0, ringR, 0, TAU); ctx.stroke();
+  // second ring for depth
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = `rgba(${tier.rgb}, ${fadeOut * 0.45})`;
+  ctx.beginPath(); ctx.arc(0, 0, ringR * 1.4, 0, TAU); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // BIG hit-count stamp + tier label — color-coded
+  const yLift = -tProg * u * 0.4;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `800 ${Math.round(u * 3.0)}px JetBrains Mono, ui-monospace, monospace`;
+  ctx.fillStyle = `rgba(${tier.rgb}, ${alpha})`;
+  ctx.shadowColor = tier.hex;
+  ctx.shadowBlur = 22 * fadeOut;
+  ctx.fillText(`${linger.killed}/${linger.inRadius} HIT`, cx, cy - u * 0.3 + yLift);
+  // tier label
+  ctx.font = `700 ${Math.round(u * 1.2)}px JetBrains Mono, ui-monospace, monospace`;
+  ctx.shadowBlur = 12 * fadeOut;
+  ctx.fillStyle = `rgba(${tier.rgb}, ${alpha * 0.95})`;
+  ctx.fillText(tier.label, cx, cy + u * 1.7 + yLift);
+  // biomass earned
+  if (linger.biomass) {
+    ctx.font = `600 ${Math.round(u * 0.8)}px JetBrains Mono, ui-monospace, monospace`;
+    ctx.fillStyle = `rgba(136, 255, 136, ${alpha * 0.9})`;
+    ctx.shadowColor = HOT;
+    ctx.shadowBlur = 8 * fadeOut;
+    ctx.fillText(`+${linger.biomass} BIOMASS`, cx, cy + u * 2.9 + yLift);
+  }
+  ctx.shadowBlur = 0;
 }

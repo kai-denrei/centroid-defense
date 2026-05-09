@@ -27,12 +27,19 @@ File-structure and module boundaries for the v1 PoC. No frameworks, no build ste
 | 2026-05-09 | Single mobile breakpoint at `@media (max-width: 899px)`; tablet falls into mobile bucket | Two layouts, not three; resist breakpoint creep until validated need | [[ux]], [[dev]] |
 | 2026-05-09 | Service worker caches modules via `?v=CACHE_VERSION` query strings on top-level `<script>` tags only; internal `import` statements stay unversioned and SWR-cached | Avoids per-release rewrite of every import path; freshness bounded to one extra load on bump | [[devops]], [[dev]] |
 | 2026-05-09 | `CACHE_VERSION` constant in sw.js + matching `?v=X.Y.Z` in index.html, bumped in lockstep on every deploy | KikaCentroid-proven pattern | [[devops]] |
+| 2026-05-09 | Bestiary art pipeline: cwebp manual transcoding from `AquaticAcidBestiary/*.png` → `bestiary-img/thumb/{species-id}.webp` (320×320 sq center-crop, Q72) + `bestiary-img/detail/{species-id}.webp` (768 long-edge, Q80). webp-only (no PNG fallback in 2026 browsers) | Total ship size 332KB thumbs + 1.5MB details (down from ~47MB source). Manual one-shot conversion, source PNGs stay in repo for re-runs | [[devops]], [[ux]] |
+| 2026-05-09 | New SW cache bucket `dw-bestiary-${CACHE_VERSION}` for codex art — separate from PRECACHE and RUNTIME, evictable independently. Routed via URL prefix `/bestiary-img/` in the existing `req.destination === 'image'` handler | Codex art is large (~1.8MB) but cold-tier — separating it from the game-loop cache lets us evict on its own cadence | [[devops]] |
+| 2026-05-09 | Per-component versioning convention: `.comp-ver` CSS class with format `v.1.x`, placed next to panel section headers (e.g. `// LAUNCH CONTROL · v.1.1`). Bumped per-panel iteration; orthogonal to global build tag | Lets us check at a glance which iteration of a panel is running, without inspecting the build tag | [[ux]], [[dev]] |
+| 2026-05-09 | `#launch-pane { width: 280px }` pinned on desktop | Layout stability constraint: prevents horizontal drift of internal fixed-position elements as flex:1 children reflow with content | [[ux]], [[dev]] |
+| 2026-05-09 | Stochastic motion design constraint: every randomization layer must be zero-mean over a group, preserving group centroid as a hittable target. Layers: per-individual gaussian speed noise · species-relative pool scaling · sinusoidal swim wobble · Gaussian cluster sampling · spawn-time stagger · reduced random jitter | Centroid skill is the game; randomness that destroys centroid destroys the game. CDP-verified: 4-of-a-kind centroid wobble ~6 px against STRIKE_RADIUS 80 px | [[dev]] |
 
 ## Dead Ends
 | Date | What was tried | Why it failed / was rejected |
 |---|---|---|
+| 2026-05-09 | `#launch-pane` flex container without explicit width, holding `#launch-readout` (flex:1, variable text width) + safety switch (fixed-width left edge) + 発射 button (fixed-width right edge) | Variable status text reflowed `#launch-readout`'s width → pane intrinsic width changed → comms-pane (flex:1 neighbour) absorbed delta → pane's left edge shifted → safety switch x drifted between phases. Fix: pin parent pane to a fixed width (`width: 280px`). General principle in lesson below |
 
 ## Lessons
+- A flex container with both variable-width content (a flex:1 child) and a fixed-position UI element (an input control at one edge) must have its OWN width pinned, or the fixed UI will shift horizontally as the variable content reflows. — from dead end on 2026-05-09
 
 ## Open Questions
 - [ ] If main.js exceeds 200 lines, does that mean we under-scoped the file split, or that the loop+state really is that big? — owner: Gerald — since: 2026-05-08
@@ -47,4 +54,5 @@ Blocked by: [[pm]]
 Feeds into: [[dev]]
 
 ## Session Log
+- 2026-05-09 — bestiary art pipeline (cwebp thumb 320×320 Q72 + detail 768-edge Q80) · separate SW cache bucket dw-bestiary-${VER} · per-component .comp-ver versioning convention · launch-pane width pinned 280px (layout stability dead end → lesson) · zero-mean stochastic motion design constraint locked.
 - 2026-05-08 — INIT: locked file structure, ES module imports, single-state-object pattern

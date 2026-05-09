@@ -9,13 +9,54 @@ export const STRIKE_MAX_DMG = 100;
 export const STRIKE_K = 1.5;       // falloff exponent — k=1.5 rewards precision without making near-misses worthless
 export const STRIKE_DELAY = 2.4;   // seconds — sink time for the missile cinematic
 
-// Contact factory. hp default = 20 light / 80 heavy (weight*20).
-export function makeContact(x, y, vx, vy, weight = 1) {
+// Bestiary lookups for the species-driven Contact factory and weighted
+// pool resolution in materializeSpawn.
+import { SPECIES_BY_ID, DEFAULT_SPECIES_ID, pickSpecies } from './bestiary.js';
+
+// Contact factory. v2: species-driven. Stats (hp, weight, speed, biomass,
+// blipColor, jitterAmp, abilities) are pulled from the bestiary entry.
+// Per-contact ±15% RNG variance on hp keeps killcount-based gameplay honest
+// without making the centroid math unstable.
+
+// Box-Muller — sample from N(0,1). Used for per-contact speed noise +
+// Gaussian cluster sampling. Note: this returns ONE sample; to get a 2D
+// Gaussian cluster we sample r and θ independently (see materializeSpawn).
+function gaussian01() {
+  const u1 = Math.max(Math.random(), 1e-6);
+  const u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+export function makeContact(x, y, vx, vy, opts = {}) {
+  // back-compat: opts may be a number (weight) or an object
+  if (typeof opts === 'number') opts = { weight: opts };
+  const speciesId = opts.speciesId || DEFAULT_SPECIES_ID;
+  const sp = SPECIES_BY_ID[speciesId] || SPECIES_BY_ID[DEFAULT_SPECIES_ID];
+  // ±15% HP variance for diversity within a wave
+  const hpVar = 1 + (Math.random() - 0.5) * 0.30;
+  const hp = Math.max(2, Math.round(sp.hp * hpVar));
+  const weight = (opts.weight != null) ? opts.weight : sp.weight;
+  // Per-individual stochastic motion params. Zero-mean / phase-random so the
+  // group centroid remains a stable target despite individuals looking varied.
+  const jitterAmp = sp.jitterAmp != null ? sp.jitterAmp : 1.0;
   return {
     x, y, vx, vy,
+    speciesId,
     weight,
-    hp: weight * 20,
-    maxHp: weight * 20,
+    hp, maxHp: hp,
+    biomass: sp.biomass,
+    abilities: sp.abilities,
+    blipColor: sp.blipColor,
+    blipScale: sp.blipScale,
+    jitterAmp,
+    // Sinusoidal swim wobble (perpendicular to motion). Amplitude ~9 px/s at
+    // jitterAmp=1 → ~2.9 px peak displacement at 0.5 Hz. Random phase + freq
+    // per contact so a school doesn't swim in lockstep.
+    wobbleAmp: jitterAmp * 9,
+    wobbleFreq: 0.30 + Math.random() * 0.40,           // 0.30 .. 0.70 Hz
+    wobblePhase: Math.random() * Math.PI * 2,
+    // Per-contact random-jitter re-roll period (was a fixed 1.0s constant)
+    _jitterPeriod: 0.60 + Math.random() * 0.80,        // 0.60 .. 1.40 s
     alive: true,
     aliveAt: performance.now() / 1000,
     lastBleepAt: 0,
@@ -33,19 +74,43 @@ export function toward(cx, cy, s) {
 }
 
 // Materialize one spawn config into N contacts.
-// `aim: 'rig'` overrides per-contact velocity so each contact heads at rig
-// (path length differs across the formation, so outer contacts arrive later).
+//
+// v2.0.5 stochastic motion layers (each preserves group centroid):
+//   - Cluster formation now Gaussian (Box-Muller). Denser core, occasional
+//     outliers — naturalistic spread.
+//   - Per-individual speed noise: gaussian(σ=0.10) clamped to [0.7, 1.3].
+//     A 4-of-a-kind cluster has individuals at 80%-120% of nominal speed →
+//     they spread apart over time but the centroid moves at nominal.
+//   - Species-relative speed: in a mixed-species pool, each species' speed
+//     is normalized to the pool's mean. Larger/slower species lag, smaller/
+//     faster species lead within the same group. Mean = pool nominal.
+//   - Spawn-time stagger: each contact pushed back along velocity by a
+//     random 0..staggerJitter seconds. Visually they trickle in instead of
+//     appearing en masse. Default 0.30s for clusters, 0 for lines.
 export function materializeSpawn(spawn) {
   const out = [];
-  const { count, formation, center, spread, weight = 1, vx = 0, vy = 18, axis = 'x', aim } = spawn;
+  const { count, formation, center, spread, vx = 0, vy = 18, axis = 'x', aim, species } = spawn;
   const [cx, cy] = center;
+  // Default cluster gets a small spawn-time stagger; wave authors can override.
+  const staggerJitter = (spawn.staggerJitter != null)
+    ? spawn.staggerJitter
+    : (formation === 'cluster' ? 0.30 : 0);
+  // Pre-compute mean species speed across the pool so we can scale individuals
+  // relative to the pool average rather than re-baselining the centroid.
+  const speciesPoolIds = species
+    ? (Array.isArray(species) ? species : Object.keys(species))
+    : [spawn.speciesId || DEFAULT_SPECIES_ID];
+  const poolMean = speciesPoolIds.reduce((s, id) => s + (SPECIES_BY_ID[id]?.speed || 18), 0) / speciesPoolIds.length;
   for (let i = 0; i < count; i++) {
     let x, y;
     if (formation === 'cluster') {
+      // Gaussian (Box-Muller). σ ≈ 0.55 × spread → 99% within ~1.4× spread,
+      // mean radius ≈ 0.69 × spread (comparable to uniform-disc 0.67×).
+      const sigma = spread * 0.55;
+      const r = Math.sqrt(-2 * Math.log(Math.max(Math.random(), 1e-6))) * sigma;
       const a = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * spread;
-      x = cx + Math.cos(a) * r;
-      y = cy + Math.sin(a) * r;
+      x = cx + r * Math.cos(a);
+      y = cy + r * Math.sin(a);
     } else if (formation === 'line') {
       const t = (count === 1) ? 0.5 : i / (count - 1);
       const off = (t - 0.5) * spread;
@@ -54,34 +119,68 @@ export function materializeSpawn(spawn) {
     } else {
       x = cx; y = cy;
     }
-    let cvx = vx, cvy = vy;
+    // species pick (back-compat with spawn.weight / spawn.speciesId)
+    const speciesId = species ? pickSpecies(species) : (spawn.speciesId || DEFAULT_SPECIES_ID);
+    const sp = SPECIES_BY_ID[speciesId] || SPECIES_BY_ID[DEFAULT_SPECIES_ID];
+    // Speed scaling chain: species-relative × per-individual gaussian noise.
+    const speciesRel = sp.speed / poolMean;            // 1.0 if single-species pool
+    const noise = Math.max(0.70, Math.min(1.30, 1 + gaussian01() * 0.10));
+    const totalScale = speciesRel * noise;
+    const baseSpeed = Math.hypot(vx, vy) || vy || sp.speed || 18;
+    const speed = baseSpeed * totalScale;
+    let cvx = vx * totalScale, cvy = vy * totalScale;
     if (aim === 'rig') {
-      const speed = Math.hypot(vx, vy) || vy || 18;
       const v = toward(x, y, speed);
       cvx = v.vx; cvy = v.vy;
     }
-    out.push(makeContact(x, y, cvx, cvy, weight));
+    // Spawn-time stagger — push back along velocity so individuals "trickle in."
+    if (staggerJitter > 0) {
+      const dtBack = Math.random() * staggerJitter;
+      x -= cvx * dtBack;
+      y -= cvy * dtBack;
+    }
+    out.push(makeContact(x, y, cvx, cvy, { speciesId, weight: spawn.weight }));
   }
   return out;
 }
 
-// Update all live contacts. Apply jitter, motion, rig-collision detection.
-// Returns rig-damage applied this frame (sum of HP of contacts that hit rig).
-const RIG_HIT_RADIUS = 14;          // rig physical radius for collision
-const JITTER_PX_PER_S = 2;          // per-axis velocity jitter magnitude
-const JITTER_PERIOD = 1.0;          // re-roll jitter every 1s
+// Update all live contacts. Apply jitter + sinusoidal wobble + motion +
+// rig-collision detection. Returns rig damage this frame.
+//
+// Stochastic motion layers (zero-mean — centroid stays predictable):
+//   1. Drift velocity (c.vx, c.vy) — per-contact constant from spawn (carries
+//      species-relative + per-individual gaussian speed scaling already baked in)
+//   2. Sinusoidal swim wobble — perpendicular to motion, sin(phase + 2π·freq·t)
+//      Random phase + freq per contact → no lockstep. Peak displacement
+//      ≈ wobbleAmp / (2π·freq). Visible swim sway.
+//   3. Random jitter — uniform ±0.6×jitterAmp px/s, re-rolled at random
+//      0.6-1.4s intervals per contact. High-frequency shimmer.
+const RIG_HIT_RADIUS = 14;
+const JITTER_PX_PER_S = 2 * 0.6;     // reduced from raw 2.0 — wobble carries the bulk now
 export function updateContacts(contacts, dt, now) {
   let rigDamage = 0;
   for (const c of contacts) {
     if (!c.alive) continue;
-    // jitter re-roll
-    if (!c._jitterAt || now - c._jitterAt > JITTER_PERIOD) {
-      c._jx = (Math.random() - 0.5) * 2 * JITTER_PX_PER_S;
-      c._jy = (Math.random() - 0.5) * 2 * JITTER_PX_PER_S;
+    // (1) random jitter re-roll, period randomized per contact
+    if (!c._jitterAt || now - c._jitterAt > c._jitterPeriod) {
+      const amp = JITTER_PX_PER_S * (c.jitterAmp || 1);
+      c._jx = (Math.random() - 0.5) * 2 * amp;
+      c._jy = (Math.random() - 0.5) * 2 * amp;
       c._jitterAt = now;
+      c._jitterPeriod = 0.60 + Math.random() * 0.80;
     }
-    c.x += (c.vx + c._jx) * dt;
-    c.y += (c.vy + c._jy) * dt;
+    // (2) sinusoidal swim wobble — perpendicular to current motion
+    let wobbleVx = 0, wobbleVy = 0;
+    if (c.wobbleAmp) {
+      const sp = Math.hypot(c.vx, c.vy) || 1;
+      const perpX = -c.vy / sp, perpY = c.vx / sp;
+      const phase = c.wobblePhase + 2 * Math.PI * c.wobbleFreq * (now - c.aliveAt);
+      const w = c.wobbleAmp * Math.sin(phase);
+      wobbleVx = perpX * w;
+      wobbleVy = perpY * w;
+    }
+    c.x += (c.vx + c._jx + wobbleVx) * dt;
+    c.y += (c.vy + c._jy + wobbleVy) * dt;
     // rig collision
     const drx = c.x - RIG.x, dry = c.y - RIG.y;
     if (drx * drx + dry * dry < RIG_HIT_RADIUS * RIG_HIT_RADIUS) {
@@ -170,14 +269,25 @@ export function pruneBlips(blips, now) {
   });
 }
 
-// Apply a depth-charge blast: damage contacts, return {killed, inRadius, trueCentroid}.
-// Side effects are caller's responsibility (state.detonations push, sound, marker).
+// Apply a depth-charge blast. Returns {killed, inRadius, trueCentroid, biomass}.
+// `armored` species (Barytolithus, Megacidodon, Architeuthys, ordnance-soak
+// specialists) take reduced ordnance damage. Biomass total tallied for kills.
 export function applyBlast(contacts, blastPos) {
   const inRadius = contacts.filter(c => c.alive && Math.hypot(c.x - blastPos.x, c.y - blastPos.y) <= STRIKE_RADIUS);
   let killed = 0;
+  let biomass = 0;
+  const killedSpeciesIds = [];
   for (const c of inRadius) {
-    c.hp -= strikeDamage(c, blastPos);
-    if (c.hp <= 0) { c.alive = false; killed++; }
+    let dmg = strikeDamage(c, blastPos);
+    const armored = c.abilities && (c.abilities.includes('armored') || c.abilities.includes('ordnance-soak'));
+    if (armored) dmg *= 0.5;
+    c.hp -= dmg;
+    if (c.hp <= 0) {
+      c.alive = false;
+      killed++;
+      biomass += c.biomass || 0;
+      killedSpeciesIds.push(c.speciesId);
+    }
   }
-  return { killed, inRadius, trueCentroid: weightedCentroid(inRadius) };
+  return { killed, inRadius, trueCentroid: weightedCentroid(inRadius), biomass, killedSpeciesIds };
 }

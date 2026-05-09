@@ -1,0 +1,231 @@
+Before the prompts themselves, a setup note that should help quality across the batch.
+
+## Shared world preamble
+
+You can prepend this to any of the prompts below. Keeps the visual continuity tight — same planet, same water, same lighting register — and saves you re-typing the setting every time.
+
+```
+[SETTING] An aquatic alien organism from Cassiopeia-3b, a tectonically young
+ocean world with a sulfuric sea at pH 3.8. Murky greenish-yellow water,
+dense with sulfur particulate and copper salts in suspension. Bioluminescent
+plankton in the background. Volumetric god-rays from a dim red dwarf star
+filtering through acidic haze above. Hydrothermal vent silhouettes in the
+distance. Chemosynthetic ecosystem, no calcium carbonate present anywhere.
+[STYLE] Scientific specimen photography meets concept art, naturalistic
+proportions, biologically plausible, David Attenborough documentary still,
+shot on cinema camera, shallow depth of field, dramatic underwater lighting,
+photorealistic textures, 8k detail.
+```
+
+For each creature below, append the creature-specific description. I'll keep them dense with concrete visual nouns — txt2img models do better with "translucent gelatinous bell with internal copper veining" than with "majestic" or "fearsome."
+
+## Pelagic / mid-water
+
+### 01 *Acidonecton vorax*
+```
+A jet-propelled cephalopod-analogue, 1.2 meter mantle, six muscular tentacles
+trailing behind, no suckers but rows of small chitinous hooks. Mantle covered
+in overlapping chitin-sulfur lamellae plates in muted ochre and deep amber,
+iridescent at the edges. Two large forward-facing dark eyes with horizontal
+pupils. Jet siphon visible underneath the mantle, expelling a stream of
+pressurized water. School of three or four visible in the background haze.
+Active hunting posture, mid-strike.
+```
+
+### 02 *Chalcophyma pulsans*
+```
+A bell-shaped pulsing organism, 60cm diameter, semi-translucent body with
+visible internal structures glowing faint cyan. Outer skin pigmented in oxidized
+copper green and verdigris blue, with darker patches forming a dappled pattern.
+Bell contracting mid-pulse, trailing a fringe of short white tendrils.
+Cuprous pigment concentrated in radial canals visible through the body wall.
+No tentacles below, just a pulsing aperture. Floating in mid-water, slight
+upward motion blur from propulsion pulse.
+```
+
+### 03 *Vitreonephes glacialis*
+```
+A translucent silica-spined drifter, completely glass-like body resembling a
+diatom magnified to 80cm scale. Geometric internal lattice of crystalline
+silica struts, sharp-edged radiating spines extending outward in a snowflake
+pattern. Faint pale blue refraction along edges. Almost invisible against
+the murky water except for refractive distortion. Drifting passively.
+Caustic light bending through its glass body.
+```
+
+### 04 *Sulfomedusa abyssi*
+```
+A soft-bodied jellyfish-analogue, 90cm bell, nearly transparent gelatinous
+body with vivid sulfur-yellow internal mineralization clearly visible through
+the body wall in branching dendritic patterns. No stinging tentacles, instead
+short oral arms with feathery edges. Slow contemplative pulsing motion.
+Bioluminescent rim around the bell margin, soft amber glow. Suspended in
+deep water, dim light from above.
+```
+
+## Benthic / bottom-dwelling
+
+### 05 *Barytolithus reptans*
+```
+A heavy armored bottom-crawler, 1.5 meters long, low slung body covered in
+massive overlapping plates of pale crystalline barium sulfate, white with grey
+veining, mineral texture like raw barite ore. Six short stubby legs underneath,
+plates overlap like a pangolin or armadillo but rougher, more geological.
+Small recessed eyes, blunt snout. Crawling slowly across yellow sulfur sediment,
+disturbing particulate. Side-lit, low angle, dramatic shadows.
+```
+
+### 06 *Fluorapate rigidum*
+```
+A long-bodied benthic burrower, 2 meters long, segmented serpentine body half
+emerged from yellow sediment. Dorsal surface covered in needle-like fluorapatite
+denticles, bone-white with greenish fluorescence under low light. Underside
+soft and pale pink. Multiple small mandibles around a circular mouth. Body
+partially burrowed, head and forward third visible. Disturbed sediment cloud
+around the burrow entrance.
+```
+
+### 07 *Chitinotherium fossor*
+```
+A digging beast, 1.8 meters long, thick chitinous body in russet brown and
+charcoal, with massive forward-mounted shovel claws like a mole-cricket but
+the size of a large dog. Six legs total, the front pair greatly enlarged.
+Small dorsal eyes, no neck. Emerging from disturbed sediment near a metallic
+structural pylon (out of focus). Sediment cloud trailing. Powerful muscular
+build visible through chitin segmentation.
+```
+
+### 08 *Pyrithionyx ferrosus*
+```
+An iron-clawed predator, 1.4 meters long, body armored in metallic iron-pyrite
+plates with brassy-gold sheen and dark tarnish patches. Two oversized forward
+claws made of fused pyrite crystal, glittering with cubic crystal facets.
+Eight short walking legs underneath. Cubic crystal growths along the spine.
+Low aggressive posture, claws raised, near a corroded metal rig leg. Wisps
+of rust particulate in the water.
+```
+
+## Swarm / small contacts
+
+### 09 *Acidoplankton tenuis*
+```
+A dense swarm of microscopic drifting organisms, each a translucent
+2-centimeter teardrop with a single beating cilium. Hundreds visible, forming
+a loose cloud in mid-water. Faint pale-green internal pigmentation. Backlit
+by dim filtered light, individual organisms catching highlights. Cloud-like
+collective form. Almost like marine snow but motile, organized.
+```
+
+### 10 *Halophila minima*
+```
+A swarm of tiny salt-loving organisms, 1cm each, simple ovoid bodies with
+two short flagella and crystalline salt deposits on the dorsal surface like
+miniature gem-encrusted seeds. Pale pink coloration, glittering under
+incident light. Hundreds densely packed in a flowing ribbon formation.
+Mid-water, slight current motion blur.
+```
+
+### 11 *Sulfovermis gregarius*
+```
+A school of slender worm-like organisms, each 15cm long, bright sulfur-yellow
+segmented bodies with fine cilia along the lateral lines. Sinuous swimming
+motion. Dozens visible swimming in coordinated schooling formation, all
+oriented in the same direction. Soft luminous appearance against the dark
+water column. Specimen photography style, sharp focus on foreground individuals.
+```
+
+## Apex / heavy
+
+### 12 *Megacidodon profundi*
+```
+A massive deep-sea apex predator, 8 meters long, heavy elongated body covered
+in dark grey chitinous plates with dull iridescence, scarred and pitted.
+Enormous gaping circular mouth lined with concentric rings of fluorapatite
+teeth, jaw open mid-strike. Small lateral fins along the body, large powerful
+caudal fluke. Tiny recessed eyes. Looming out of dark water, only partially
+illuminated, sense of immense scale. Cinematic lighting, deep abyssal blue-green.
+```
+
+### 13 *Thalassotitan corrosor*
+```
+A colossal sea titan, 12 meters long, bulbous bloated body with leathery dark
+purple-grey skin glistening with secreted acid droplets. Acid mucus dripping
+from numerous skin pores, forming faint shimmer trails in the water around it.
+Multiple stubby tentacle-limbs underneath. Pale milky eyes. Slow ponderous
+movement. Subtle chemical haze distorts the water immediately around its body.
+Massive scale, dwarfing nearby vent structures. Dim blood-red dwarf star light
+filtering down from above.
+```
+
+### 14 *Architeuthys vitreus*
+```
+A vast glass-armored cephalopod, 6 meter mantle, body sheathed in transparent
+silica armor plates revealing internal organs and musculature beneath, tinted
+faintly green. Eight long sinuous tentacles with rows of crystalline hooks.
+Two enormous black eyes, intelligent and predatory. Mantle propulsion creating
+distortion currents. Crystal armor catching refractive highlights from
+bioluminescent plankton. Suspended in dark mid-water, presence-dominating.
+```
+
+### 15 *Leviathys sulfuratum*
+```
+A sulfurous leviathan, 10 meters long, irregular asymmetric body shape with
+multiple unequal lobes, sulfur-yellow and burnt-orange coloration with dark
+patches of necrotic-looking tissue. Multiple irregular mouths and breathing
+apertures along the body. Slow erratic locomotion via cilia mats and pulsing
+contractions. Trailing strands of sulfur particulate. Disturbing non-bilateral
+body plan. Dim ambient lighting, sense of unease.
+```
+
+## Strange / specialist
+
+### 16 *Lampyronoctis abyssalis*
+```
+A bioluminescent abyssal organism, 40cm body, soft gelatinous form with
+intense chemiluminescent organs running in twin parallel rows along the body,
+glowing brilliant cyan-white. Body itself dark and barely visible, only the
+light organs prominent. Long thin tentacles trailing behind, also tipped
+with smaller light points. Drifting in pitch-black deep water, only its own
+light illuminating the immediate surround. Long exposure aesthetic.
+```
+
+### 17 *  mimica*
+```
+A camouflaging cnidarian, currently mimicking the appearance of a smaller
+benign drifter — looks like a 30cm pale jellyfish but with subtle wrongness:
+slightly too symmetrical, internal structures faintly visible suggesting a
+much larger body folded inside. Pale colors, soft texture. Hint of larger
+darker mass barely visible behind/within the smaller form. Ambiguous scale
+cues. Suspended in mid-water, deceptively peaceful pose.
+```
+
+### 18 *Ferrobacterium colossus*
+```
+An enormous drifting bacterial mat, 5 meters across, thin sheet-like structure
+of rust-red and ochre iron-oxidizing bacterial colony, rippling and undulating
+slowly through the water column like a living carpet or veil. Translucent at
+the edges, denser and more opaque at the center. Drifting passively in
+current. Particulate trailing behind. Vast scale relative to other organisms.
+Diffuse soft underwater lighting.
+```
+
+### 19 *Acidocoryne errans*
+```
+A solitary club-shaped wanderer, 70cm long, asymmetric club-form body with
+a narrow stalk and bulbous head, mottled dull purple and grey-green coloration
+like a bruise. Erratic unpredictable movement, body twisted at an awkward
+angle mid-motion. No clear front or back. A few short uneven appendages.
+Alone in open water, no schooling behavior. Disorienting biological geometry.
+Cold subdued lighting.
+```
+
+## Generation tips
+
+A few practical notes for getting these to render well:
+
+- **Negative prompt boilerplate** worth carrying across all generations: `cartoon, anime, cute, friendly, smooth gradients, plastic toy, calcium shells, coral, seashells, fish scales, dolphin, recognizable Earth fish anatomy, vertebrate skeleton, bones, cuddly, mascot`. The "no Earth fish" exclusions matter — these models default hard to bass and tuna shapes.
+- **Aspect ratio.** 16:9 or 21:9 for the bigger pelagic/apex creatures (gives them room to feel large), 1:1 or 4:3 for benthic and swarm shots.
+- **Model choice matters a lot here.** Flux and SDXL handle the "scientific specimen" register reasonably; Midjourney will lean more aesthetic-cinematic, which works for codex hero shots but fights you when you want naturalistic biology. If the model adds gills and dorsal fins anyway, lean harder on the chitin/silica/cephalopod vocabulary in the prompt and shorten the species-name framing — these models don't actually know what *Acidonecton vorax* is, and pretending they do can dilute the signal.
+- **Codex hero shot variant.** For each creature, you can also try a clinical specimen-on-black-background variant: replace the SETTING block with `Specimen photography on pure black background, scientific museum lighting, three-quarter angle, centered composition, no environment.` Useful for the codex UI entries we sketched in the previous turn.
+
+If a particular generation comes back with an awkward body plan and you want to lock it in for consistency across angles, do one good seed first then use that as image-to-image init for the remaining shots of the same species — much faster than re-rolling the prompt twenty times.

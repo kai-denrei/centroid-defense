@@ -109,62 +109,82 @@ export function gameOverTone() {
   blip({ type: 'sawtooth', freq: 110, end: 50, decay: 0.6, gain: 0.25 });
 }
 
-// Mechanical safety-switch click — short noise burst with bandpass.
+// Mechanical safety-switch click — sharp contact-make transient + brief
+// metal-body thunk. The combination is the "satisfying" feel — a thin
+// noise burst alone reads as digital, the low resonance gives it weight.
 export function safetyClick() {
   if (!ctx) return;
-  const dur = 0.04;
+  const t0 = ctx.currentTime;
+  // (1) Sharp contact transient — band-passed noise, fast decay
+  const dur = 0.06;
   const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
   const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  for (let i = 0; i < data.length; i++) {
+    const env = Math.exp(-i / (data.length * 0.22));
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
   const n = ctx.createBufferSource();
   n.buffer = buf;
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass';
-  bp.frequency.value = 1800;
-  bp.Q.value = 4;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.35, ctx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-  n.connect(bp).connect(g).connect(masterGain);
-  n.start();
-  n.stop(ctx.currentTime + dur + 0.01);
+  bp.frequency.value = 2400;
+  bp.Q.value = 6;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.45, t0);
+  ng.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  n.connect(bp).connect(ng).connect(masterGain);
+  n.start(t0);
+  n.stop(t0 + dur + 0.01);
+  // (2) Metal-body thunk — sine 180→80 Hz, 80ms decay, slightly delayed
+  const osc = ctx.createOscillator();
+  const og = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(180, t0 + 0.004);
+  osc.frequency.exponentialRampToValueAtTime(75, t0 + 0.06);
+  og.gain.setValueAtTime(0.0001, t0 + 0.004);
+  og.gain.exponentialRampToValueAtTime(0.18, t0 + 0.012);
+  og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.10);
+  osc.connect(og).connect(masterGain);
+  osc.start(t0 + 0.004);
+  osc.stop(t0 + 0.12);
 }
 
-// Target-lock confirm — short triangle blip, lower than contactBleep.
+// Target-lock confirm — single clean BEEP. Sine 1050 Hz, 130 ms.
+// Industrial confirmation register — distinct from the mechanical clicks
+// of the safety toggle and launch button.
 export function targetLock() {
   if (!ctx) return;
   const t0 = ctx.currentTime;
-  [620, 880].forEach((f, i) => {
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(f, t0 + i * 0.04);
-    g.gain.setValueAtTime(0.0001, t0 + i * 0.04);
-    g.gain.exponentialRampToValueAtTime(0.10, t0 + i * 0.04 + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + i * 0.04 + 0.08);
-    osc.connect(g).connect(masterGain);
-    osc.start(t0 + i * 0.04);
-    osc.stop(t0 + i * 0.04 + 0.10);
-  });
-}
-
-// Launch button — heavy mechanical press + low thud.
-export function launchPress() {
-  if (!ctx) return;
-  // mechanical click
-  safetyClick();
-  // sub-thud
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(70, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.18);
-  g.gain.setValueAtTime(0.0001, ctx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.30, ctx.currentTime + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.20);
+  osc.frequency.setValueAtTime(1050, t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.13);
   osc.connect(g).connect(masterGain);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.22);
+  osc.start(t0);
+  osc.stop(t0 + 0.14);
+}
+
+// Launch button press — heavier than safety toggle. Mechanical click +
+// deeper, longer sub-thud (the "big red button" body resonance).
+export function launchPress() {
+  if (!ctx) return;
+  safetyClick();    // initial contact transient + light thunk
+  // Bigger sub-thud — 90→32 Hz, 220ms, stronger gain
+  const t0 = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(90, t0);
+  osc.frequency.exponentialRampToValueAtTime(32, t0 + 0.22);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.36, t0 + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
+  osc.connect(g).connect(masterGain);
+  osc.start(t0);
+  osc.stop(t0 + 0.26);
 }
 
 // Armed chime — rising 2-note triangle, fires when an orbital window opens.

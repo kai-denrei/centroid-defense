@@ -258,6 +258,197 @@
     cursor: crosshair;
     background: #030604;
   }
+  /* ── BUILD PHASE PANE ──────────────────────────────────────────────────
+     Shares the launch-pane slot. Hidden by default; shown when body has
+     the `.phase-build` class, which is toggled by the phase machine.
+     During build_phase the launch-pane hides and #build-pane takes over. */
+  body.phase-build #launch-pane { display: none; }
+  #build-pane {
+    display: none;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 280px;
+  }
+  body.phase-build #build-pane { display: flex; }
+  #build-header {
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .build-frame {
+    /* reuses .caution-frame stripe but with phosphor-mid stripe instead of amber */
+    border-image: repeating-linear-gradient(
+      45deg,
+      var(--p-mid) 0 10px,
+      #1a1a1a 10px 20px
+    ) 4 !important;
+    min-height: 84px !important;
+  }
+  #build-readout {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+  }
+  #build-readout .status {
+    color: var(--p-hot);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.4);
+  }
+  #build-readout .biomass-line {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+  }
+  #build-readout .biomass-line span {
+    color: var(--p-hot);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .build-button, .build-ready {
+    background: transparent;
+    border: 1px solid var(--p-mid);
+    color: var(--p-hot);
+    font-family: var(--mono);
+    cursor: pointer;
+    padding: 0;
+    transition: background 180ms, border-color 180ms, color 180ms;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  .build-button {
+    width: 90px; height: 64px;
+  }
+  .build-button .lbl { font-size: 10px; letter-spacing: 0.14em; line-height: 1.1; }
+  .build-button .cost { font-size: 9px; letter-spacing: 0.10em; color: var(--amber); }
+  .build-button:hover, .build-button:active {
+    background: rgba(136, 255, 136, 0.08);
+    border-color: var(--p-hot);
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.5);
+  }
+  .build-button.no-funds { opacity: 0.4; cursor: not-allowed; }
+  .build-button.no-funds:hover { background: transparent; }
+  .build-ready {
+    width: 60px; height: 64px;
+    border-color: var(--amber-dim);
+    color: var(--amber);
+  }
+  .build-ready .t { font-size: 10px; letter-spacing: 0.18em; }
+  .build-ready .timer {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.4);
+  }
+  .build-ready.urgent .timer {
+    color: var(--red);
+    text-shadow: 0 0 6px rgba(255, 51, 34, 0.6);
+    animation: blink 0.5s steps(2) infinite;
+  }
+  .build-ready:hover, .build-ready:active {
+    background: rgba(255, 170, 68, 0.08);
+    border-color: var(--amber);
+  }
+
+  /* ── RIG (SEA-BASE) PANE — in-wave home view ────────────────────────────
+     Shares the launch-pane slot during wave_running when viewMode === 'rig'.
+     Hidden by default; shown when body has `.view-rig` class. */
+  body.view-rig #launch-pane { display: none; }
+  #rig-pane {
+    display: none;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 280px;
+  }
+  body.view-rig #rig-pane { display: flex; }
+  #rig-header {
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  #rig-readout {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+  }
+  #rig-readout .status {
+    color: var(--p-hot);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.4);
+  }
+  #rig-readout .resource-line {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+  }
+  #rig-readout .resource-line span {
+    color: var(--p-hot);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  #rig-readout .resource-line span.zero {
+    color: var(--p-dim);
+  }
+  /* View toggle button — same shape on both panes (rig/launch).
+     Amber accent so it reads as the operator action that swaps consoles. */
+  .view-toggle {
+    background: transparent;
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+    font-family: var(--mono);
+    cursor: pointer;
+    padding: 0;
+    transition: background 180ms, border-color 180ms, color 180ms;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 70px; height: 64px;
+  }
+  .view-toggle .ico {
+    font-size: 14px;
+    color: var(--amber);
+    line-height: 1;
+  }
+  .view-toggle .lbl {
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    line-height: 1.1;
+  }
+  .view-toggle:hover, .view-toggle:active {
+    background: rgba(255, 170, 68, 0.08);
+    border-color: var(--amber);
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.5);
+  }
+
   /* ── LAUNCH CONSOLE ─────────────────────────────────────────────────────
      Multi-phase launch UI. Safety toggle on the left, status readout in
      the middle, big red 発射 button on the right with yellow/black caution
@@ -266,6 +457,10 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    /* Fixed width keeps the safety switch anchored. Without this, the pane
+       resizes with the status-text length and the switch shifts horizontally
+       between phases (STANDBY vs LAUNCH AUTHORIZED · TGT 234/1820). */
+    width: 280px;
   }
   #launch-header {
     color: var(--amber-dim);
@@ -273,6 +468,20 @@
     letter-spacing: 0.22em;
     margin-bottom: 4px;
     flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  /* Per-component version tag — small, dim, right-aligned in the section header.
+     Used to verify which iteration of a panel is running at a glance. Bump
+     locally when the panel's behaviour changes; orthogonal to the global build
+     tag in the intro corner. */
+  .comp-ver {
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
   }
   .caution-frame {
     border: 4px solid transparent;
@@ -282,11 +491,15 @@
       #1a1a1a 10px 20px
     ) 4;
     background: var(--bg-chrome);
-    padding: 6px 8px;
+    padding: 6px 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    min-height: 84px;             /* fit the vertical switch comfortably */
   }
+  /* Safety: vertical metal toggle. ON (up) = armed, OFF (down) = safe.
+     Two stacked PNG sprites swap on click; the .lbl-on/.lbl-off chips light
+     up to indicate current state. The "satisfying click" is in audio.js. */
   .safety {
     background: transparent;
     border: 0;
@@ -295,54 +508,38 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
+    gap: 2px;
     font: inherit;
     color: var(--p-mid);
+    width: 36px;
   }
-  .safety:focus-visible { outline: 1px dashed var(--amber-dim); outline-offset: 2px; }
-  .safety .track {
-    width: 56px;
-    height: 24px;
-    background: #0a0a0a;
-    border: 1px solid var(--p-dim);
-    border-radius: 12px;
-    position: relative;
-    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+  .safety:focus-visible { outline: 1px dashed var(--amber-dim); outline-offset: 3px; }
+  .safety .switch-img {
+    width: 30px;
+    height: 50px;
+    object-fit: contain;
+    pointer-events: none;        /* clicks pass through to the button */
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    image-rendering: -webkit-optimize-contrast;
   }
-  .safety .knob {
-    width: 20px;
-    height: 20px;
-    background: linear-gradient(145deg, #5a8a5a, #2a4a2a);
-    border-radius: 50%;
-    position: absolute;
-    top: 1px;
-    left: 1px;
-    transition: left 200ms cubic-bezier(.6,.05,.3,1.2), background 200ms;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  .safety .lbl-on,
+  .safety .lbl-off {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--p-dim);
+    transition: color 180ms, text-shadow 180ms;
+    line-height: 1;
   }
-  .safety[aria-pressed="true"] .knob {
-    left: 33px;
-    background: linear-gradient(145deg, #ff5544, #aa1a1a);
-    box-shadow: 0 0 8px rgba(255, 51, 34, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  }
-  .safety .lbl {
-    display: flex;
-    gap: 6px;
-    font-size: 8px;
-    letter-spacing: 0.16em;
-  }
-  .safety .lbl-safe { color: var(--p-mid); }
-  .safety .lbl-arm  { color: var(--amber-dim); }
-  .safety[aria-pressed="true"] .lbl-safe { color: var(--p-dim); }
-  .safety[aria-pressed="true"] .lbl-arm {
+  /* Active label: ON when armed, OFF when safe */
+  .safety[aria-pressed="true"]  .lbl-on  {
     color: var(--red);
     text-shadow: 0 0 6px rgba(255, 51, 34, 0.6);
   }
-  /* safety LOCKED (no missile yet) — knob cannot move */
-  .safety.locked {
-    cursor: not-allowed;
-    opacity: 0.45;
+  .safety[aria-pressed="false"] .lbl-off {
+    color: var(--p-mid);
+    text-shadow: 0 0 4px rgba(58, 140, 58, 0.4);
   }
+  .safety.locked { cursor: not-allowed; opacity: 0.45; }
   #launch-readout {
     flex: 1;
     min-width: 0;
@@ -498,16 +695,29 @@
   }
   #log {
     flex: 1;
-    overflow-y: hidden;
+    /* No scrollbar — display text on separate lines, wrap when needed.
+       justify-content: flex-end keeps the LATEST entry visible at the
+       bottom of the strip; older entries overflow upward and get clipped
+       by the parent's overflow: hidden. */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
     color: var(--amber);
     font-size: 12px;
     letter-spacing: 0.04em;
-    line-height: 1.5;
+    line-height: 1.45;
     text-shadow: 0 0 4px rgba(255, 170, 68, 0.25);
+    flex-shrink: 0;
   }
   #log .line {
-    white-space: nowrap;
+    /* allow long entries to wrap onto a second visual line rather than
+       overflow horizontally and trigger a scroll bar */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     opacity: 0.85;
+    flex-shrink: 0;
   }
   #log .line.fresh { opacity: 1.0; }
   #log .line.crit  { color: var(--red); text-shadow: 0 0 6px rgba(255, 51, 34, 0.5); }
@@ -614,6 +824,356 @@
     letter-spacing: 0.18em;
     animation: blink 1s steps(2) infinite;
   }
+  /* ── v2 BIOMASS + CODEX HUD ─────────────────────────────────────────── */
+  #biomass-bay {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    margin-right: 14px;
+  }
+  #codex-btn {
+    background: transparent;
+    border: 1px solid var(--p-dim);
+    color: var(--p-mid);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 200ms;
+  }
+  #codex-btn:hover, #codex-btn:active {
+    color: var(--p-hot);
+    border-color: var(--p-mid);
+    background: rgba(136, 255, 136, 0.05);
+  }
+  #biomass-bay .biomass-readout {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  #biomass-bay .lbl { color: var(--p-dim); font-size: 9px; letter-spacing: 0.18em; }
+  #biomass-bay .val {
+    color: var(--p-hot);
+    font-size: 14px;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(136,255,136,0.5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* CODEX MODAL — full-screen overlay listing the bestiary */
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 10, 5, 0.92);
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    cursor: default;
+  }
+  .modal.hide { display: none; }
+  .modal-frame {
+    width: min(720px, 100%);
+    height: min(640px, 100%);
+    background: var(--bg-chrome);
+    border: 1px solid var(--p-mid);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 22px rgba(136, 255, 136, 0.18);
+  }
+  .modal-frame header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--p-dim);
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+  }
+  .modal-frame header button {
+    background: transparent;
+    border: 0;
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+  }
+  .modal-frame footer {
+    padding: 8px 14px;
+    border-top: 1px solid var(--p-dim);
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-align: center;
+  }
+  /* ── BESTIARY DETAIL LIGHTBOX ─────────────────────────────────────────
+     Opens on click of an unlocked thumb. Stacks above #codex-modal at a
+     higher z-index. Close on backdrop tap, X button, or ESC key. */
+  .modal.lightbox { z-index: 70; background: rgba(2, 5, 2, 0.96); }
+  .lightbox-frame {
+    width: min(900px, 96vw);
+    max-height: 92vh;
+    background: var(--bg-chrome);
+    border: 1px solid var(--p-mid);
+    box-shadow: 0 0 28px rgba(136, 255, 136, 0.22);
+    display: flex;
+    flex-direction: column;
+  }
+  .lightbox-frame header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--p-dim);
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    flex-shrink: 0;
+  }
+  .lightbox-frame header button {
+    background: transparent;
+    border: 0;
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+  }
+  .lightbox-image-wrap {
+    flex: 1;
+    min-height: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    overflow: hidden;
+  }
+  #bestiary-detail-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border: 1px solid var(--amber-dim);
+    box-shadow: inset 0 0 8px rgba(136, 255, 136, 0.12);
+    display: block;
+  }
+  #bestiary-detail-caption {
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--p-dim);
+    text-align: center;
+    flex-shrink: 0;
+  }
+  #bestiary-detail-caption .taxon {
+    color: var(--p-hot);
+    font-style: italic;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 8px rgba(136, 255, 136, 0.4);
+  }
+  #bestiary-detail-caption .meta {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    margin-top: 3px;
+  }
+  /* unlocked thumbs hint at clickability */
+  #codex-body .entry:not(.locked) .thumb { cursor: zoom-in; }
+  #codex-body .entry:not(.locked) .thumb:hover {
+    box-shadow: 0 0 10px rgba(136, 255, 136, 0.45), inset 0 0 6px rgba(136, 255, 136, 0.12);
+    border-color: var(--amber);
+  }
+
+  /* tab strip — 5 category tabs at the top of the modal body */
+  #codex-tabs {
+    display: flex;
+    height: 32px;
+    border-bottom: 1px solid var(--p-dim);
+    padding: 0 14px;
+    gap: 0;
+    flex-shrink: 0;
+  }
+  #codex-tabs .codex-tab {
+    flex: 1;
+    min-width: 80px;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--p-mid);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    padding: 8px 4px 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: color 200ms, border-color 200ms;
+  }
+  #codex-tabs .codex-tab:hover { color: var(--p-hot); }
+  #codex-tabs .codex-tab.active {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.4);
+  }
+  #codex-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    color: var(--p-mid);
+    font-size: 11px;
+    line-height: 1.55;
+    letter-spacing: 0.04em;
+  }
+  #codex-body .entry {
+    display: grid;
+    grid-template-columns: 96px 1fr 88px;
+    grid-template-areas:
+      "thumb taxon  threat"
+      "thumb meta   kills"
+      "thumb stats  stats"
+      "thumb abil   abil"
+      "desc  desc   desc"
+      "note  note   note";
+    gap: 4px 12px;
+    padding: 12px 0;
+    border-bottom: 1px dashed rgba(58, 140, 58, 0.25);
+  }
+  #codex-body .entry:last-child { border-bottom: 0; }
+  #codex-body .entry.locked { opacity: 0.42; }
+  #codex-body .entry .thumb-cell {
+    grid-area: thumb;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #codex-body .entry .thumb {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border: 1px solid var(--amber-dim);
+    box-shadow: inset 0 0 6px rgba(136, 255, 136, 0.12);
+    background: var(--bg);
+    display: block;
+  }
+  #codex-body .entry.locked .thumb {
+    filter: brightness(0) saturate(0) opacity(0.55) drop-shadow(0 0 4px var(--p-dim));
+    background: rgba(15, 44, 15, 0.4);
+  }
+  #codex-body .entry .spec-num {
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .thumb-stub {
+    width: 96px; height: 96px;
+    border: 1px dashed var(--amber-dim);
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--p-dim);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-align: center;
+    line-height: 1.3;
+  }
+  #codex-body .entry .taxon {
+    grid-area: taxon;
+    color: var(--p-hot);
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: 0.04em;
+    font-size: 12px;
+  }
+  #codex-body .entry.locked .taxon { opacity: 0.55; }
+  #codex-body .entry .taxon .genus { font-style: italic; }
+  #codex-body .entry .taxon .species { font-style: italic; }
+  #codex-body .entry .meta {
+    grid-area: meta;
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+  }
+  #codex-body .entry .threat {
+    grid-area: threat;
+    text-align: right;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .threat.low    { color: var(--p-mid); }
+  #codex-body .entry .threat.medium { color: var(--amber-dim); }
+  #codex-body .entry .threat.high   { color: var(--amber); }
+  #codex-body .entry .threat.apex   { color: var(--red); text-shadow: 0 0 6px rgba(255,51,34,0.4); }
+  #codex-body .entry .kills {
+    grid-area: kills;
+    text-align: right;
+    color: var(--amber);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  #codex-body .entry.locked .kills { color: var(--p-dim); }
+  #codex-body .entry .stats {
+    grid-area: stats;
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  #codex-body .entry .stats .blip-swatch {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border: 1px solid var(--p-dim);
+    vertical-align: middle;
+  }
+  #codex-body .entry .abil {
+    grid-area: abil;
+    color: var(--amber-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .desc, #codex-body .entry .note {
+    color: var(--p-mid);
+    font-size: 10px;
+    line-height: 1.6;
+    margin-top: 2px;
+  }
+  #codex-body .entry .desc {
+    grid-area: desc;
+    font-style: italic;
+  }
+  #codex-body .entry .desc .label,
+  #codex-body .entry .note .label {
+    color: var(--amber-dim);
+    font-style: normal;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .note { grid-area: note; }
+  /* mobile: stack thumb above text on very narrow screens */
+  @media (max-width: 380px) {
+    #codex-body .entry {
+      grid-template-columns: 1fr 88px;
+      grid-template-areas:
+        "thumb thumb"
+        "taxon threat"
+        "meta  kills"
+        "stats stats"
+        "abil  abil"
+        "desc  desc"
+        "note  note";
+    }
+    #codex-body .entry .thumb,
+    #codex-body .entry .thumb-stub {
+      width: 100%;
+      height: auto;
+      max-height: 200px;
+      aspect-ratio: 1 / 1;
+    }
+  }
+
   /* build version indicator on intro — confirms which build is running */
   #build-tag {
     position: absolute;
@@ -811,18 +1371,53 @@
       line-height: 1.3;
       letter-spacing: 0.04em;
     }
-    #log .line:not(:last-child) { display: none; }   /* show only newest */
-    /* LAUNCH CONSOLE on mobile — full-width strip between comms and cam */
-    #launch-pane {
+    /* Mobile: only the newest line, single-line with ellipsis. The 28-px
+       strip can't accommodate wrapping. */
+    #log .line:not(:last-child) { display: none; }
+    #log .line {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* LAUNCH/BUILD/RIG CONSOLES on mobile — full-width strip between comms and cam */
+    #launch-pane, #build-pane, #rig-pane {
       flex: 0 0 86px;
       width: 100dvw;
       padding: 4px 6px 6px;
     }
+    body.phase-build #launch-pane,
+    body.view-rig #launch-pane    { display: none; }
+    body:not(.phase-build) #build-pane { display: none; }
+    body:not(.view-rig) #rig-pane      { display: none; }
+    body.view-rig #rig-pane            { display: flex; }
+    /* Rig pane mobile sizing — mirror the build pane */
+    #rig-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
+    #rig-readout .status { font-size: 10px; }
+    #rig-readout .resource-line { font-size: 9px; }
+    .view-toggle { width: 70px; height: 56px; }
+    .view-toggle .lbl { font-size: 8px; }
+    .view-toggle .ico { font-size: 12px; }
+    #build-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
+    .build-frame {
+      padding: 4px 8px;
+      gap: 8px;
+      min-height: 70px !important;
+      height: 70px;
+    }
+    .build-button { width: 78px; height: 56px; }
+    .build-button .lbl { font-size: 9px; }
+    .build-button .cost { font-size: 8px; }
+    .build-ready { width: 50px; height: 56px; }
+    .build-ready .t { font-size: 9px; }
+    .build-ready .timer { font-size: 14px; }
+    #build-readout .status { font-size: 10px; }
+    #build-readout .biomass-line { font-size: 9px; }
     #launch-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
     .caution-frame {
       padding: 4px 8px;
       gap: 8px;
-      height: 64px;
+      min-height: 70px;
+      height: 70px;
     }
     .launch-button {
       width: 78px;
@@ -832,9 +1427,9 @@
     .launch-button .latin { font-size: 7px; }
     #launch-readout .status { font-size: 10px; letter-spacing: 0.12em; }
     #launch-readout .target { font-size: 8px; letter-spacing: 0.14em; }
-    .safety .track { width: 48px; height: 22px; }
-    .safety .knob { width: 18px; height: 18px; }
-    .safety[aria-pressed="true"] .knob { left: 28px; }
+    .safety { width: 30px; }
+    .safety .switch-img { width: 24px; height: 40px; }
+    .safety .lbl-on, .safety .lbl-off { font-size: 8px; letter-spacing: 0.14em; }
 
     /* CAM PANE — full-width strip, always visible. Black "no feed" when idle. */
     #cam-pane {
@@ -872,6 +1467,36 @@
     #stage { display: none; }
   }
 </style>
+<!-- Start fetching main.js as early as possible. Without this, deferred
+     module evaluation only begins after DOMContentLoaded, leaving a window
+     where the intro is on screen but its pointerdown handler isn't bound
+     yet — taps in that window were silently lost ("space/tap to begin
+     sometimes fails on reload"). -->
+<link rel="modulepreload" href="./main.js?v=2.0.12-seabase">
+<script>
+  // Pre-init dismissal capture. Runs synchronously during HTML parse,
+  // long before main.js evaluates, so any tap or [SPACE] the user does
+  // during the script-load gap is buffered. main.js consumes the flag
+  // at boot and immediately advances past intro.
+  (function () {
+    if (window.__dwIntroPending) return;
+    window.__dwIntroPending = false;
+    function isInstallTap(ev) {
+      const t = ev.target;
+      return t && t.closest && t.closest('#install-btn, #ios-a2hs');
+    }
+    document.addEventListener('pointerdown', function (ev) {
+      if (isInstallTap(ev)) return;
+      window.__dwIntroPending = true;
+    }, { once: true, capture: true });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.code === 'Space' || ev.code === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        window.__dwIntroPending = true;
+      }
+    }, { once: true, capture: true });
+  })();
+</script>
 </head>
 <body>
   <div id="stage">
@@ -883,6 +1508,13 @@
       <div class="center-readout">
         <span class="full"><span>WAVE </span><span class="wave" id="wave-num">—</span><span> · MISSION </span><span id="mission-time">T+00:00</span></span>
         <span class="short">W<span id="wave-num-short">—</span> · <span id="mission-time-short">00:00</span></span>
+      </div>
+      <div id="biomass-bay">
+        <button id="codex-btn" type="button" aria-label="Bestiary">⌬ BESTIARY</button>
+        <div class="biomass-readout">
+          <span class="lbl">BIOMASS</span>
+          <span class="val" id="biomass-val">0</span>
+        </div>
       </div>
       <div id="ord-bay">
         <div id="ord-pips"><span class="label">ORD</span></div>
@@ -915,7 +1547,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v1.5.0</div>
+        <div id="build-tag">v2.0.12-α · seabase</div>
       </div>
     </main>
 
@@ -943,15 +1575,56 @@
         <div id="log-header">// COMMS LOG · CASS-3 · ALL ENTRIES UTC</div>
         <div id="log"></div>
       </div>
+      <div id="build-pane">
+        <div id="build-header">
+          <span>// BUILD PHASE</span>
+          <span class="comp-ver">v.1.0</span>
+        </div>
+        <div id="build-console" class="caution-frame build-frame">
+          <div id="build-readout">
+            <div class="status">DEPLOY DEFENSES</div>
+            <div class="biomass-line">BIOMASS <span id="build-biomass">0</span></div>
+          </div>
+          <button id="deploy-drone" class="build-button" type="button">
+            <span class="lbl">DEPLOY DRONE</span>
+            <span class="cost">−<span id="drone-cost">20</span> BIO</span>
+          </button>
+          <button id="build-ready" class="build-ready" type="button">
+            <span class="t">READY</span>
+            <span class="timer" id="build-timer">25</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="rig-pane">
+        <div id="rig-header">
+          <span>// SEA STATION · CONN</span>
+          <span class="comp-ver">v.1.0</span>
+        </div>
+        <div id="rig-console" class="caution-frame build-frame">
+          <div id="rig-readout">
+            <div class="status">STATION OPERATIONAL</div>
+            <div class="resource-line">MISSILES <span id="rig-missile-count">0</span> · BIOMASS <span id="rig-biomass">0</span></div>
+          </div>
+          <button id="view-toggle-rig" class="view-toggle" type="button" aria-label="Switch to missile control">
+            <span class="ico">▶</span>
+            <span class="lbl">MISSILE</span>
+            <span class="lbl">CONTROL</span>
+          </button>
+        </div>
+      </div>
+
       <div id="launch-pane">
-        <div id="launch-header">// LAUNCH CONTROL</div>
+        <div id="launch-header">
+          <span>// LAUNCH CONTROL</span>
+          <!-- per-component version. bump on each launch-console iteration. -->
+          <span class="comp-ver">v.1.2</span>
+        </div>
         <div id="launch-console" class="caution-frame">
           <button id="safety-switch" class="safety" type="button" aria-pressed="false" aria-label="Safety">
-            <span class="track"><span class="knob"></span></span>
-            <span class="lbl">
-              <span class="lbl-safe">SAFE</span>
-              <span class="lbl-arm">ARM</span>
-            </span>
+            <span class="lbl-on">ON</span>
+            <img id="safety-img" class="switch-img" src="icons/switch-off.png" alt="" width="120" height="200" />
+            <span class="lbl-off">OFF</span>
           </button>
           <div id="launch-readout">
             <div class="status" id="launch-status">STANDBY</div>
@@ -960,6 +1633,11 @@
           <button id="launch-btn" class="launch-button" type="button" disabled aria-label="Launch">
             <span class="kanji">発射</span>
             <span class="latin">LAUNCH</span>
+          </button>
+          <button id="view-toggle-radar" class="view-toggle" type="button" aria-label="Return to rig view">
+            <span class="ico">◀</span>
+            <span class="lbl">RIG</span>
+            <span class="lbl">VIEW</span>
           </button>
         </div>
       </div>
@@ -971,6 +1649,34 @@
         <canvas id="missilecam" width="200" height="120"></canvas>
       </div>
     </footer>
+    <div id="codex-modal" class="modal hide">
+      <div class="modal-frame">
+        <header>
+          <span>// BESTIARY · DEEPWATCH SCIENTIFIC SURVEY</span>
+          <button id="codex-close" type="button" aria-label="Close">[ × CLOSE ]</button>
+        </header>
+        <div id="codex-tabs" role="tablist"></div>
+        <div id="codex-body"></div>
+        <footer>SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS</footer>
+      </div>
+    </div>
+
+    <!-- Bestiary detail-image lightbox — opens on click of an unlocked thumb -->
+    <div id="bestiary-detail" class="modal lightbox hide">
+      <div class="lightbox-frame">
+        <header>
+          <span id="bestiary-detail-spec">// SPECIMEN PLATE · SPEC.??</span>
+          <button id="bestiary-detail-close" type="button" aria-label="Close">[ × CLOSE ]</button>
+        </header>
+        <div class="lightbox-image-wrap">
+          <img id="bestiary-detail-img" alt="" />
+        </div>
+        <div id="bestiary-detail-caption">
+          <div class="taxon" id="bestiary-detail-taxon"></div>
+          <div class="meta" id="bestiary-detail-meta"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="rotate-hint">
@@ -979,18 +1685,24 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=1.5.0"></script>
+  <script type="module" src="./main.js?v=2.0.12-seabase"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      // Auto-reload when a new SW takes control. Combined with skipWaiting() in
-      // sw.js, this means a deploy reaches the user on the very next page load
-      // (instead of needing manual refresh-twice / clear-data).
-      let _swReloaded = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (_swReloaded) return;
-        _swReloaded = true;
-        window.location.reload();
-      });
+      // Register but DO NOT auto-reload on controllerchange. The earlier
+      // unconditional reload (added in v1.4.2 to fight stale-SW-on-deploy)
+      // raced with the user's first tap on the intro: tap registered, then
+      // the SW activated mid-input, the page reloaded, intro re-shown,
+      // input "lost." Symptom: "sometimes space/tap fails to register on
+      // reload."
+      //
+      // Cache-freshness now relies on:
+      //   - NetworkFirst on HTML (sw.js navigationHandler) — always tries
+      //     network first, so a fresh deploy's index.html lands within 3s.
+      //   - ?v=X.Y.Z query-string busting on `main.js` — the new HTML
+      //     references the new version, which cache-misses and fetches
+      //     network. New SW also still installs (skipWaiting + claim) for
+      //     the next navigation; current page just keeps running until
+      //     user reloads.
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(() => {});
       });

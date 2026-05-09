@@ -10,13 +10,16 @@ import { WAVES } from './waves.js';
 import {
   clearScope, smearScope, drawScopeChrome, drawSweep, drawBlips,
   drawPendingStrike, drawDetonations, drawCentroidMarker, drawTurretTracers,
-  drawGameOverFlash, isInsideScope, drawMissileCam, drawTargetReticle,
+  drawGameOverFlash, isInsideScope, drawMissileCam, drawMissileCamFullscreen,
+  drawTargetReticle,
 } from './scope.js';
+import { drawBase, seedRipples, initRipplePool, makeDrone } from './base.js';
 import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
   fmtTime, fmtBearing, fmtRange,
   showWaveEndcard, showRunCompleteCard, showGameOverCard, hideEndcard,
-  hideIntro, showIntro,
+  hideIntro, showIntro, openCodex, closeCodex, speciesById,
+  closeBestiaryDetail, isBestiaryDetailOpen,
 } from './hud.js';
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
@@ -26,11 +29,19 @@ import {
 
 const TAU = Math.PI * 2;
 const SWEEP_PERIOD = 3.0;
-const TURRET_FIRE_INTERVAL = 0.4;
+const TURRET_FIRE_INTERVAL_BASE = 0.4;
 const TURRET_DPS_PER_SHOT = 8;
 const BLEEP_NEAR = 0.18, BLEEP_FAR = 1.2;
 const GAUGE_TIME = 6.0;        // seconds for one orbital window to fill
 const IMPACT_LINGER = 0.55;    // seconds the cam shows post-detonation aftermath
+const BUILD_PHASE_DURATION = 25.0;   // seconds between waves to spend biomass
+const DRONE_COST = 20;
+const DRONE_FIRE_RATE_FACTOR = 0.85; // each drone multiplies turret interval by this (faster fire)
+// Computed per state — interval shrinks as drones are deployed.
+function turretInterval(state) {
+  const n = (state.drones && state.drones.length) || 0;
+  return Math.max(0.10, TURRET_FIRE_INTERVAL_BASE * Math.pow(DRONE_FIRE_RATE_FACTOR, n));
+}
 
 const canvas = document.getElementById('scope');
 const ctx = canvas.getContext('2d');
@@ -39,9 +50,20 @@ const camCtx = camCanvas.getContext('2d');
 const camRec = document.getElementById('cam-rec');
 const camPane = document.getElementById('cam-pane');
 const safetyBtn = document.getElementById('safety-switch');
+const safetyImg = document.getElementById('safety-img');
 const launchBtn = document.getElementById('launch-btn');
 const launchStatusEl = document.getElementById('launch-status');
 const launchTargetEl = document.getElementById('launch-target');
+// seabase v1 — build phase controls
+const buildBiomassEl = document.getElementById('build-biomass');
+const buildTimerEl = document.getElementById('build-timer');
+const buildReadyBtn = document.getElementById('build-ready');
+const deployDroneBtn = document.getElementById('deploy-drone');
+// seabase v2 — in-wave rig view + view toggle
+const rigMissileEl = document.getElementById('rig-missile-count');
+const rigBiomassEl = document.getElementById('rig-biomass');
+const viewToggleRig = document.getElementById('view-toggle-rig');     // on rig-pane → switch to radar
+const viewToggleRadar = document.getElementById('view-toggle-radar'); // on launch-pane → switch to rig
 
 // Canonical 720-logical-px coordinate space. Backing store = cssSize × dpr.
 // On every resize, ctx.setTransform(dpr * scaleFactor, ...) once — game logic
@@ -103,6 +125,17 @@ const state = {
   readyStrikes: 0, reservedStrikes: 0, gauge: 0,
   safetyOff: false, targetReticle: null,
   pendingStrikes: [], impactLingers: [],
+  // v2 economy + codex
+  biomass: 0,                      // total accumulated this run
+  biomassThisWave: 0,
+  codex: {},                       // { speciesId: kills }
+  // seabase v1 — alternating Mode B (Sea Base) view + build phase between waves
+  buildPhaseStartedAt: 0,
+  drones: [],                      // persists across waves within a run
+  ripples: initRipplePool(),       // pool of 32, all start inactive
+  // seabase v2 — rig view is home during waves; player toggles to radar to fire.
+  // After every detonation, viewMode auto-reverts to 'rig'.
+  viewMode: 'rig',                 // 'rig' | 'radar' (only meaningful when wave_running)
   contacts: [], blips: [],
   detonations: [], turretShots: [],
   centroidMarker: null,
@@ -126,8 +159,37 @@ function startRun() {
   state.runStats = { totalStrikes: 0, wavesCleared: 0, waves: [] };
   state.pendingStrikes = [];
   state.impactLingers = [];
+  state.biomass = 0;
+  state.codex = {};
+  state.drones = [];
+  // mark all ripples inactive (the pool persists across runs)
+  for (const r of state.ripples) r.alive = false;
   clearLog();
   startWave(1);
+}
+
+// Enter build phase between waves. wave_endcard advance flows here instead of
+// directly to startWave(n+1). 25s timer, [SPACE]/READY skips remainder.
+function startBuildPhase() {
+  state.phase = 'build_phase';
+  state.buildPhaseStartedAt = now();
+  hideEndcard();
+  document.body.classList.add('phase-build');
+  logT(`BUILD PHASE — ${BUILD_PHASE_DURATION | 0}s · DEPLOY DEFENSES`);
+}
+function endBuildPhase() {
+  document.body.classList.remove('phase-build');
+  startWave(state.wave + 1);
+}
+
+// DEPLOY DRONE button — spends biomass, adds a drone, drone effect on
+// turret rate is automatic via turretInterval(state).
+function deployDrone() {
+  if (state.phase !== 'build_phase') return flickerOrdnance();
+  if (state.biomass < DRONE_COST) { flickerOrdnance(); return; }
+  state.biomass -= DRONE_COST;
+  state.drones.push(makeDrone(now()));
+  logT(`DRONE DEPLOYED — ${state.drones.length} ACTIVE · BIOMASS ${state.biomass}`);
 }
 
 function startWave(idx) {
@@ -144,16 +206,33 @@ function startWave(idx) {
     contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
     centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
-    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0 },
+    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0, biomassEarned: 0 },
+    biomassThisWave: 0,
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
+    viewMode: 'rig',                  // every wave begins on the rig — toggle to radar to engage
   });
   setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   hideEndcard();
-  logT(`WAVE ${idx} INBOUND — ${w.name} · ${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
+  // Headliner: binomial flavor name for the wave (the species the wave teaches)
+  const headSp = w.headliner ? speciesById(w.headliner) : null;
+  const binomial = headSp ? `${headSp.genus.toUpperCase()} ${headSp.species.toUpperCase()}` : '';
+  if (binomial) {
+    logT(`WAVE ${idx} · ${binomial} · ${w.name}`);
+    logT(`${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
+  } else {
+    logT(`WAVE ${idx} INBOUND — ${w.name} · ${w.strikeBudget} ORBITAL ASSET${w.strikeBudget > 1 ? 'S' : ''} TASKED`);
+  }
 }
 
 function update(dt, t) {
+  // Ripples animate whenever we're showing the sea-base (build phase OR in-wave rig view).
+  if (isRigView()) seedRipples(state, dt, t);
+  // Build phase tick — auto-advance after BUILD_PHASE_DURATION
+  if (state.phase === 'build_phase') {
+    if (t - state.buildPhaseStartedAt >= BUILD_PHASE_DURATION) endBuildPhase();
+    return;
+  }
   if (state.phase !== 'wave_running') return;
   // orbital gauge — fills for next reserved strike, auto-promotes to ready
   if (state.reservedStrikes > 0) {
@@ -197,7 +276,10 @@ function update(dt, t) {
     if (!c.alive) continue;
     const norm = Math.min(1, rangeFromRig(c) / SCOPE_R);
     if (angleCrossed(state.prevSweep, state.sweep, bearingFromRig(c))) {
-      state.blips.push({ x: c.x, y: c.y, t0: t, weight: c.weight, contactId: c.id });
+      state.blips.push({
+        x: c.x, y: c.y, t0: t, weight: c.weight, contactId: c.id,
+        blipColor: c.blipColor, blipScale: c.blipScale,
+      });
       contactBleep(norm);
     }
     const period = BLEEP_NEAR + (BLEEP_FAR - BLEEP_NEAR) * norm;
@@ -210,14 +292,25 @@ function update(dt, t) {
     state.pendingStrikes = state.pendingStrikes.filter(ps => t - ps.t0 < STRIKE_DELAY);
     for (const ps of due) detonate(ps, t);
   }
-  // auto-turret
-  if (t - state.turretLastShotAt >= TURRET_FIRE_INTERVAL) {
+  // auto-turret. Armored species (Barytolithus, Megacidodon, Architeuthys,
+  // Ferrobacterium-soak) take 50% turret damage — they exist precisely to
+  // bypass point defense. Fire interval shrinks per deployed drone (seabase v1).
+  if (t - state.turretLastShotAt >= turretInterval(state)) {
     const tgt = pickTurretTarget(state.contacts);
     if (tgt) {
-      tgt.hp -= TURRET_DPS_PER_SHOT;
+      const armored = tgt.abilities && (tgt.abilities.includes('armored') || tgt.abilities.includes('ordnance-soak'));
+      const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
+      tgt.hp -= dmg;
       state.turretShots.push({ x: tgt.x, y: tgt.y, t0: t });
       state.turretLastShotAt = t;
-      if (tgt.hp <= 0) tgt.alive = false;
+      if (tgt.hp <= 0) {
+        tgt.alive = false;
+        // turret kills also yield biomass + codex (smaller take, but counted)
+        state.biomass += tgt.biomass || 0;
+        state.biomassThisWave += tgt.biomass || 0;
+        state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + (tgt.biomass || 0);
+        if (tgt.speciesId) state.codex[tgt.speciesId] = (state.codex[tgt.speciesId] || 0) + 1;
+      }
     }
   }
   // prune transient effects
@@ -231,7 +324,7 @@ function update(dt, t) {
 }
 
 function detonate(strike, t) {
-  const { killed, inRadius, trueCentroid } = applyBlast(state.contacts, strike);
+  const { killed, inRadius, trueCentroid, biomass, killedSpeciesIds } = applyBlast(state.contacts, strike);
   const inCount = inRadius.length;
   if (trueCentroid) {
     state.centroidMarker = { x: trueCentroid.x, y: trueCentroid.y, t0: t };
@@ -239,14 +332,22 @@ function detonate(strike, t) {
     state.waveStats.bestAccuracyPx = (state.waveStats.bestAccuracyPx == null)
       ? accPx : Math.min(state.waveStats.bestAccuracyPx, accPx);
   }
-  // hit-count tracking — k/n where k = killed, n = contacts inside blast radius
+  // hit-count + biomass + codex bookkeeping
   state.waveStats.totalHits = (state.waveStats.totalHits || 0) + killed;
   state.waveStats.totalInRadius = (state.waveStats.totalInRadius || 0) + inCount;
+  state.biomass += biomass;
+  state.biomassThisWave += biomass;
+  state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + biomass;
+  for (const id of killedSpeciesIds) {
+    state.codex[id] = (state.codex[id] || 0) + 1;
+  }
   state.detonations.push({ x: strike.x, y: strike.y, t0: t });
-  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed, inRadius: inCount });
+  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed, inRadius: inCount, biomass });
   detonation();
   const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
-  logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%)`);
+  logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%) · +${biomass} BIOMASS`);
+  // Auto-revert to rig view after every detonation (seabase v2 design).
+  if (state.phase === 'wave_running') state.viewMode = 'rig';
 }
 
 function triggerGameOver(t) {
@@ -263,10 +364,14 @@ function finishWave(t, allDestroyed) {
   const w = WAVES[state.wave - 1];
   const hits = state.waveStats.totalHits || 0;
   const inRad = state.waveStats.totalInRadius || 0;
+  const headSp = w.headliner ? speciesById(w.headliner) : null;
+  const binomial = headSp ? `${headSp.genus} ${headSp.species}` : null;
   state.runStats.waves.push({
     wave: state.wave, name: w.name, budget: w.strikeBudget,
+    binomial,
     strikesUsed: state.waveStats.strikesUsed, bestAcc: accPct,
     hits, inRadius: inRad,
+    biomass: state.waveStats.biomassEarned || 0,
     integrity: state.rigIntegrity,
   });
   state.runStats.wavesCleared = state.wave;
@@ -277,16 +382,19 @@ function finishWave(t, allDestroyed) {
     logT('EXTRACTION SECURED — ALL THREATS NEUTRALIZED');
   } else {
     showWaveEndcard({
-      wave: state.wave, name: w.name, strikesUsed: state.waveStats.strikesUsed,
+      wave: state.wave, name: w.name, binomial, strikesUsed: state.waveStats.strikesUsed,
       strikeBudget: w.strikeBudget, accuracyPct: accPct,
       hits, inRadius: inRad,
+      biomassEarned: state.waveStats.biomassEarned || 0,
+      biomassTotal: state.biomass,
       integrity: state.rigIntegrity, allDestroyed,
     });
-    logT(`WAVE ${state.wave} CLEAR — STAND BY`);
+    logT(`WAVE ${state.wave} CLEAR — +${state.waveStats.biomassEarned || 0} BIOMASS COLLECTED · TOTAL ${state.biomass}`);
   }
 }
 
-function render(t) {
+// Renders Mode A (radar, during waves) — the existing PPI sonar.
+function renderRadar(t) {
   smearScope(ctx, 0.22);
   drawScopeChrome(ctx);
   drawSweep(ctx, state.sweep);
@@ -306,18 +414,97 @@ function render(t) {
   }
 }
 
+// Render dispatch — three modes during waves:
+//   - cam:    main scope is taken over by the missile cam (in-flight + linger)
+//   - rig:    sea-base view; the home during waves
+//   - radar:  PPI scope; opt-in via the toggle to fire missiles
+// Build_phase always uses rig; non-wave phases (intro, endcard, game_over)
+// keep the radar's frozen state behind their overlays.
+function isRigView() {
+  return state.phase === 'build_phase'
+      || (state.phase === 'wave_running' && state.viewMode === 'rig');
+}
+function isCamView() {
+  return state.phase === 'wave_running'
+      && (state.pendingStrikes.length > 0 || state.impactLingers.length > 0);
+}
+let _prevRenderMode = null;
+function render(t, dt) {
+  let mode;
+  if (isCamView()) mode = 'cam';
+  else if (isRigView()) mode = 'rig';
+  else mode = 'radar';
+  // Full-clear on mode switch — renderRadar uses smearScope (partial fade),
+  // so without this the rig water gradient or cam frame would bleed through.
+  if (mode !== _prevRenderMode) {
+    clearScope(ctx);
+    _prevRenderMode = mode;
+  }
+  if (mode === 'cam') drawMissileCamFullscreen(ctx, state, t);
+  else if (mode === 'rig') drawBase(ctx, state, t, dt);
+  else renderRadar(t);
+}
+
+// View toggle — only meaningful during wave_running. Build_phase always rig;
+// non-wave phases ignore.
+function toggleView() {
+  if (state.phase !== 'wave_running') return;
+  state.viewMode = state.viewMode === 'rig' ? 'radar' : 'rig';
+  // safety always re-engages on view exit so the player must re-arm each visit
+  if (state.viewMode === 'rig') {
+    state.safetyOff = false;
+    state.targetReticle = null;
+  }
+  safetyClick();
+}
+
+// Keep #body class in sync each frame so CSS can swap pane visibility cheaply.
+function syncViewClass() {
+  const inWaveRig = state.phase === 'wave_running' && state.viewMode === 'rig';
+  document.body.classList.toggle('view-rig', inWaveRig);
+}
+
 function frame(nowMs) {
   let dt = (nowMs - lastFrameMs) / 1000;
   if (dt > 0.05) dt = 0.05;
   lastFrameMs = nowMs;
   const t = nowMs / 1000;
   update(dt, t);
-  render(t);
+  render(t, dt);
   drawMissileCam(camCtx, state, t);
   camRec.style.visibility = state.pendingStrikes.length ? 'visible' : 'hidden';
+  syncViewClass();
   updateLaunchConsole();
+  updateBuildConsole(t);
+  updateRigConsole();
   updateHUD(state);
   requestAnimationFrame(frame);
+}
+
+// Rig pane HUD — missile count + biomass readout. Cheap text writes.
+function updateRigConsole() {
+  if (!rigMissileEl) return;
+  const total = state.readyStrikes + state.reservedStrikes + (state.gauge > 0 ? 0 : 0);
+  if (rigMissileEl.textContent !== String(state.readyStrikes)) {
+    rigMissileEl.textContent = String(state.readyStrikes);
+  }
+  rigMissileEl.classList.toggle('zero', state.readyStrikes <= 0);
+  if (rigBiomassEl && rigBiomassEl.textContent !== String(state.biomass | 0)) {
+    rigBiomassEl.textContent = String(state.biomass | 0);
+  }
+}
+
+// Build-pane HUD updates — runs every frame, cheap (DOM text writes only).
+function updateBuildConsole(t) {
+  if (!buildBiomassEl) return;
+  buildBiomassEl.textContent = String(state.biomass | 0);
+  if (state.phase === 'build_phase') {
+    const remaining = Math.max(0, BUILD_PHASE_DURATION - (t - state.buildPhaseStartedAt));
+    const sec = Math.ceil(remaining);
+    if (buildTimerEl.textContent !== String(sec)) buildTimerEl.textContent = String(sec);
+    buildReadyBtn.classList.toggle('urgent', remaining <= 5);
+    deployDroneBtn.classList.toggle('no-funds', state.biomass < DRONE_COST);
+  }
 }
 
 // Launch console visual state machine. Drives:
@@ -329,9 +516,13 @@ function updateLaunchConsole() {
   const ready = state.readyStrikes > 0;
   const armed = state.safetyOff;
   const hasTarget = !!state.targetReticle;
-  // safety switch
+  // safety switch — vertical toggle: ON image when armed, OFF when safe
   safetyBtn.setAttribute('aria-pressed', armed ? 'true' : 'false');
   safetyBtn.classList.toggle('locked', !ready && !armed);
+  if (safetyImg) {
+    const target = armed ? 'icons/switch-on.png' : 'icons/switch-off.png';
+    if (!safetyImg.src.endsWith(target)) safetyImg.src = target;
+  }
   // launch button
   launchBtn.classList.toggle('ready', ready && !armed);
   launchBtn.classList.toggle('armed', ready && armed && hasTarget);
@@ -343,7 +534,7 @@ function updateLaunchConsole() {
   } else if (!ready && state.reservedStrikes > 0) {
     status = `ORBIT ${Math.round(state.gauge * 100)}%`; statusClass = 'charging';
   } else if (ready && !armed) {
-    status = 'READY · ENGAGE SAFETY'; statusClass = 'ready';
+    status = 'READY · FLIP TO ON'; statusClass = 'ready';
   } else if (ready && armed && !hasTarget) {
     status = 'AWAITING TARGET'; statusClass = 'armed';
   } else if (ready && armed && hasTarget) {
@@ -462,9 +653,72 @@ launchBtn.addEventListener('pointerdown', (ev) => {
   commitLaunch();
 });
 
+// Build-phase controls: DEPLOY DRONE buys a drone if funds permit;
+// READY button skips remaining timer and starts the next wave.
+deployDroneBtn.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  deployDrone();
+});
+buildReadyBtn.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  if (state.phase === 'build_phase') endBuildPhase();
+});
+
+// View toggle — both buttons share the same handler. One lives on the
+// rig-pane (rig→radar), the other on the launch-pane (radar→rig).
+function bindViewToggle(btn) {
+  if (!btn) return;
+  btn.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    toggleView();
+  });
+}
+bindViewToggle(viewToggleRig);
+bindViewToggle(viewToggleRadar);
+
+// Codex modal toggle (v2 bestiary).
+const codexBtn = document.getElementById('codex-btn');
+const codexClose = document.getElementById('codex-close');
+const codexModal = document.getElementById('codex-modal');
+codexBtn.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  openCodex(state.codex);
+});
+codexClose.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  closeCodex();
+});
+codexModal.addEventListener('pointerdown', (ev) => {
+  if (ev.target === codexModal) { ev.preventDefault(); closeCodex(); }
+});
+
+// Bestiary detail lightbox (v2.0.2). Opened by clicking an unlocked thumb.
+const bestiaryDetail = document.getElementById('bestiary-detail');
+const bestiaryDetailClose = document.getElementById('bestiary-detail-close');
+bestiaryDetailClose.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  closeBestiaryDetail();
+});
+bestiaryDetail.addEventListener('pointerdown', (ev) => {
+  // backdrop tap closes; clicks on the frame are absorbed by descendants
+  if (ev.target === bestiaryDetail) { ev.preventDefault(); closeBestiaryDetail(); }
+});
+window.addEventListener('keydown', (ev) => {
+  if (ev.code === 'Escape' && isBestiaryDetailOpen()) {
+    ev.preventDefault();
+    closeBestiaryDetail();
+  }
+});
+
 function advanceFromPrompt() {
   if (state.phase === 'intro') { hideIntro(); startRun(); }
-  else if (state.phase === 'wave_endcard') { hideEndcard(); startWave(state.wave + 1); }
+  else if (state.phase === 'wave_endcard') {
+    // After every wave except the final, transition through build phase.
+    // Game-over and run-complete bypass build phase via their own paths.
+    hideEndcard();
+    startBuildPhase();
+  }
+  else if (state.phase === 'build_phase') { endBuildPhase(); }
   else if (state.phase === 'run_complete' || state.phase === 'game_over') { hideEndcard(); startRun(); }
 }
 
@@ -475,6 +729,13 @@ clearScope(ctx);
 drawScopeChrome(ctx);
 showIntro();
 setupInstallUI();
+// Consume any pre-init dismissal that landed in the script-load gap.
+// The inline <script> in index.html buffers a tap/[SPACE] that occurs
+// before this module evaluates so the user never loses an intro press.
+if (window.__dwIntroPending) {
+  window.__dwIntroPending = false;
+  advanceFromPrompt();
+}
 requestAnimationFrame(frame);
 
 // ─── Install prompts ───────────────────────────────────────────────────────

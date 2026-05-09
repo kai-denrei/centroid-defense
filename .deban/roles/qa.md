@@ -20,6 +20,9 @@ Validate the spec's success criteria after the v1 build is playable. The build i
 | 2026-05-09 | v1.3 mobile QA gating metric: tap accuracy on Gerald's iPhone (build-seq milestone #8). Verified via 5 fixed-location taps on the scope clustering within ±5 logical-px | Tap precision is the bug Gerald reported; nothing else ships until this is verified on device | [[dev]] |
 | 2026-05-09 | Every milestone in v1.3 build sequence is verified on Gerald's actual phone, not desktop devtools mobile emulation | iOS gesture-unlock and A2HS quirks do not reproduce in emulation; only the device tells the truth | [[dev]] |
 | 2026-05-09 | v1.3 ship gate = full 5-wave cold playthrough on iPhone, installed as PWA from home screen, with airplane mode toggled mid-run to confirm offline works | Validates PWA install + service worker + offline.html as a single integrated test | [[dev]] |
+| 2026-05-09 | CDP layout-stability test: drive page through phase transitions (intro → wave_running → ARMED → AUTHORIZED), capture `getBoundingClientRect()` of fixed UI elements at each phase, assert positional invariance | Catches drift bugs that are easy to miss in manual playtest. Used to verify v2.0.7 launch-pane fix: switch x=377 in all four phases | [[dev]], [[arch]] |
+| 2026-05-09 | CDP `Runtime.exceptionThrown` capture as the boot-success gate. `node --check` is NOT sufficient — duplicate ES module imports and other browser-strict parser issues are silently tolerated by Node | Caught the v2.0.0-α duplicate-import bug that shipped with no Node-detectable error but failed to boot in browsers | [[dev]] |
+| 2026-05-09 | Stochastic-motion verification: CDP probe samples per-contact velocity stdev across an active wave, confirms σ_v matches the configured gaussian noise + species-relative pool scaling | Validates centroid-preserving constraint at runtime, not just in design math | [[dev]] |
 
 ## Dead Ends
 | Date | What was tried | Why it failed / was rejected |
@@ -38,4 +41,5 @@ Blocked by: [[dev]]
 Feeds into: [[pm]]
 
 ## Session Log
+- 2026-05-09 — added CDP test patterns: layout-stability across phase transitions (verified switch x=377 across 4 launch-control phases for v2.0.7); `Runtime.exceptionThrown` as boot-success gate (catches what `node --check` misses); per-contact velocity stdev for stochastic-motion centroid math.
 - 2026-05-08 — INIT: locked success criteria — 3 of 4 spec criteria must hold
