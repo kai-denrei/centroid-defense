@@ -729,6 +729,13 @@ clearScope(ctx);
 drawScopeChrome(ctx);
 showIntro();
 setupInstallUI();
+// Consume any pre-init dismissal that landed in the script-load gap.
+// The inline <script> in index.html buffers a tap/[SPACE] that occurs
+// before this module evaluates so the user never loses an intro press.
+if (window.__dwIntroPending) {
+  window.__dwIntroPending = false;
+  advanceFromPrompt();
+}
 requestAnimationFrame(frame);
 
 // ─── Install prompts ───────────────────────────────────────────────────────

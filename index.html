@@ -1467,6 +1467,36 @@
     #stage { display: none; }
   }
 </style>
+<!-- Start fetching main.js as early as possible. Without this, deferred
+     module evaluation only begins after DOMContentLoaded, leaving a window
+     where the intro is on screen but its pointerdown handler isn't bound
+     yet — taps in that window were silently lost ("space/tap to begin
+     sometimes fails on reload"). -->
+<link rel="modulepreload" href="./main.js?v=2.0.12-seabase">
+<script>
+  // Pre-init dismissal capture. Runs synchronously during HTML parse,
+  // long before main.js evaluates, so any tap or [SPACE] the user does
+  // during the script-load gap is buffered. main.js consumes the flag
+  // at boot and immediately advances past intro.
+  (function () {
+    if (window.__dwIntroPending) return;
+    window.__dwIntroPending = false;
+    function isInstallTap(ev) {
+      const t = ev.target;
+      return t && t.closest && t.closest('#install-btn, #ios-a2hs');
+    }
+    document.addEventListener('pointerdown', function (ev) {
+      if (isInstallTap(ev)) return;
+      window.__dwIntroPending = true;
+    }, { once: true, capture: true });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.code === 'Space' || ev.code === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        window.__dwIntroPending = true;
+      }
+    }, { once: true, capture: true });
+  })();
+</script>
 </head>
 <body>
   <div id="stage">
@@ -1517,7 +1547,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.11-α · seabase</div>
+        <div id="build-tag">v2.0.12-α · seabase</div>
       </div>
     </main>
 
@@ -1655,7 +1685,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.11-seabase"></script>
+  <script type="module" src="./main.js?v=2.0.12-seabase"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
