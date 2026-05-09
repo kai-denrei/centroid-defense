@@ -161,6 +161,51 @@ export function drawBlips(ctx, blips, now) {
   }
 }
 
+// Target reticle — set BEFORE launch (multi-phase commit). Distinct from the
+// pending-strike crosshair so the player sees "this is where the missile WILL
+// go if I press 発射" vs "missile is in the air, descending now."
+// Style: green corner brackets + thin crosshair + faint blast-radius preview ring.
+export function drawTargetReticle(ctx, target, now) {
+  if (!target) return;
+  const elapsed = now - (target.t0 || now);
+  const pulse = 0.65 + 0.35 * Math.sin(elapsed * 6);
+  ctx.save();
+  ctx.translate(target.x, target.y);
+  ctx.strokeStyle = `rgba(136, 255, 136, ${pulse})`;
+  ctx.lineWidth = 1.4;
+  ctx.shadowColor = '#88ff88';
+  ctx.shadowBlur = 6;
+  // corner brackets
+  const br = 18, brIn = 8;
+  for (const [sx, sy] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * br, sy * brIn); ctx.lineTo(sx * br, sy * br); ctx.lineTo(sx * brIn, sy * br);
+    ctx.stroke();
+  }
+  // thin crosshair
+  ctx.beginPath();
+  ctx.moveTo(-12, 0); ctx.lineTo(-3, 0);
+  ctx.moveTo(3, 0); ctx.lineTo(12, 0);
+  ctx.moveTo(0, -12); ctx.lineTo(0, -3);
+  ctx.moveTo(0, 3); ctx.lineTo(0, 12);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // faint blast-radius preview
+  ctx.strokeStyle = `rgba(136, 255, 136, ${0.18 * pulse})`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 5]);
+  ctx.beginPath();
+  ctx.arc(0, 0, STRIKE_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // label
+  ctx.fillStyle = `rgba(136, 255, 136, ${pulse})`;
+  ctx.font = '600 9px JetBrains Mono, ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('TGT LOCK', br + 4, -br + 6);
+  ctx.restore();
+}
+
 // Pending strike: amber crosshair pulsing once per 400ms.
 export function drawPendingStrike(ctx, strike, now) {
   if (!strike) return;

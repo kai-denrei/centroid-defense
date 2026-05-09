@@ -10,7 +10,7 @@ import { WAVES } from './waves.js';
 import {
   clearScope, smearScope, drawScopeChrome, drawSweep, drawBlips,
   drawPendingStrike, drawDetonations, drawCentroidMarker, drawTurretTracers,
-  drawGameOverFlash, isInsideScope, drawMissileCam,
+  drawGameOverFlash, isInsideScope, drawMissileCam, drawTargetReticle,
 } from './scope.js';
 import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
@@ -21,6 +21,7 @@ import {
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
   strikeWhoosh, detonation, gameOverTone, runCompleteChime, armedChime,
+  safetyClick, targetLock, launchPress,
 } from './audio.js';
 
 const TAU = Math.PI * 2;
@@ -37,6 +38,10 @@ const camCanvas = document.getElementById('missilecam');
 const camCtx = camCanvas.getContext('2d');
 const camRec = document.getElementById('cam-rec');
 const camPane = document.getElementById('cam-pane');
+const safetyBtn = document.getElementById('safety-switch');
+const launchBtn = document.getElementById('launch-btn');
+const launchStatusEl = document.getElementById('launch-status');
+const launchTargetEl = document.getElementById('launch-target');
 
 // Canonical 720-logical-px coordinate space. Backing store = cssSize × dpr.
 // On every resize, ctx.setTransform(dpr * scaleFactor, ...) once — game logic
@@ -45,6 +50,7 @@ const LOGICAL_SIZE = 720;
 const MOBILE_BREAKPOINT = 900;
 const MOBILE_TOP_PX = 40;
 const MOBILE_LOG_PX = 28;
+const MOBILE_LAUNCH_PX = 86;
 const MOBILE_CAM_PX = 68;
 let scaleFactor = 1;        // cssSize / LOGICAL_SIZE
 let dpr = 1;
@@ -56,9 +62,9 @@ function fitCanvas() {
   // Mobile: scope size is constant (cam always visible). Compute from viewport.
   if (isMobile()) {
     const safeTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
-    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + MOBILE_CAM_PX + safeTop;
+    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + MOBILE_LAUNCH_PX + MOBILE_CAM_PX + safeTop;
     const sideMax = Math.min(window.innerWidth, window.innerHeight - chrome);
-    const cssSize = Math.max(240, Math.floor(sideMax));
+    const cssSize = Math.max(220, Math.floor(sideMax));
     document.documentElement.style.setProperty('--scope-css-px', cssSize + 'px');
   }
   // Read the canvas's actual rendered CSS width.
@@ -88,11 +94,14 @@ const state = {
   //   readyStrikes  — fully charged orbital assets, available to fire
   //   reservedStrikes — queued, will charge in sequence
   //   gauge         — 0..1 charge progress for the NEXT reserved strike
+  //   safetyOff     — player toggled the launch safety; required for commit
+  //   targetReticle — {x, y} | null — target locked on scope, awaiting LAUNCH press
   //   pendingStrikes — currently in flight, descending
-  //   impactLingers — recently detonated, cam shows aftermath ~0.45s
+  //   impactLingers — recently detonated, cam shows aftermath
   //   strikeBudgetThisWave kept for HUD display (total pips)
   strikeBudgetThisWave: 0,
   readyStrikes: 0, reservedStrikes: 0, gauge: 0,
+  safetyOff: false, targetReticle: null,
   pendingStrikes: [], impactLingers: [],
   contacts: [], blips: [],
   detonations: [], turretShots: [],
@@ -131,6 +140,7 @@ function startWave(idx) {
     wave: idx, waveStartedAt: now(),
     strikeBudgetThisWave: w.strikeBudget,
     readyStrikes: ready, reservedStrikes: reserved, gauge: 0,
+    safetyOff: false, targetReticle: null,
     contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
     centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
@@ -284,6 +294,7 @@ function render(t) {
   drawTurretTracers(ctx, state.turretShots, t);
   drawDetonations(ctx, state.detonations, t);
   drawCentroidMarker(ctx, state.centroidMarker, t);
+  drawTargetReticle(ctx, state.targetReticle, t);
   for (const ps of state.pendingStrikes) drawPendingStrike(ctx, ps, t);
   if (state.phase === 'game_over_freeze') {
     const remaining = Math.max(0, state.gameOverFlashUntil - t);
@@ -303,10 +314,56 @@ function frame(nowMs) {
   update(dt, t);
   render(t);
   drawMissileCam(camCtx, state, t);
-  // REC indicator pulses red whenever a munition is in flight
   camRec.style.visibility = state.pendingStrikes.length ? 'visible' : 'hidden';
+  updateLaunchConsole();
   updateHUD(state);
   requestAnimationFrame(frame);
+}
+
+// Launch console visual state machine. Drives:
+//   - safety switch aria-pressed + .locked class
+//   - launch button .ready / .armed / disabled state
+//   - launch-status text + class
+//   - launch-target text + class
+function updateLaunchConsole() {
+  const ready = state.readyStrikes > 0;
+  const armed = state.safetyOff;
+  const hasTarget = !!state.targetReticle;
+  // safety switch
+  safetyBtn.setAttribute('aria-pressed', armed ? 'true' : 'false');
+  safetyBtn.classList.toggle('locked', !ready && !armed);
+  // launch button
+  launchBtn.classList.toggle('ready', ready && !armed);
+  launchBtn.classList.toggle('armed', ready && armed && hasTarget);
+  launchBtn.disabled = !(ready && armed && hasTarget);
+  // status readout
+  let status, statusClass;
+  if (state.pendingStrikes.length && !ready && state.reservedStrikes === 0 && state.gauge === 0) {
+    status = 'IN FLIGHT'; statusClass = 'armed';
+  } else if (!ready && state.reservedStrikes > 0) {
+    status = `ORBIT ${Math.round(state.gauge * 100)}%`; statusClass = 'charging';
+  } else if (ready && !armed) {
+    status = 'READY · ENGAGE SAFETY'; statusClass = 'ready';
+  } else if (ready && armed && !hasTarget) {
+    status = 'AWAITING TARGET'; statusClass = 'armed';
+  } else if (ready && armed && hasTarget) {
+    status = 'LAUNCH AUTHORIZED'; statusClass = 'locked';
+  } else {
+    status = 'STANDBY'; statusClass = '';
+  }
+  if (launchStatusEl.textContent !== status) launchStatusEl.textContent = status;
+  launchStatusEl.className = 'status ' + statusClass;
+  // target readout
+  if (hasTarget) {
+    const { x, y } = state.targetReticle;
+    const b = bearingFromRig({ x, y });
+    const r = Math.hypot(x - RIG.x, y - RIG.y);
+    launchTargetEl.textContent = `TGT ${fmtBearing(b)}/${fmtRange(r)}`;
+    launchTargetEl.className = 'target set';
+  } else {
+    launchTargetEl.textContent = 'NO TARGET';
+    launchTargetEl.className = 'target';
+  }
 }
 
 // INPUT
@@ -323,23 +380,57 @@ document.addEventListener('pointerdown', unlockAudioOnce, true);
 document.addEventListener('touchend',    unlockAudioOnce, true);
 document.addEventListener('click',       unlockAudioOnce, true);
 
+// Canvas tap: set / move the target reticle ONLY. Does not commit.
+// Multi-phase launch (safety → target → button) — tap is step (c) of the ritual.
+// Safety must be OFF and a missile must be ready, otherwise we flicker the ord pips.
 canvas.addEventListener('pointerdown', (ev) => {
   ev.preventDefault();         // suppress synthesized mouse events on iOS
   if (state.phase !== 'wave_running') return;
-  // Map CSS-pixel client coords → 720-logical-px space (scope.js + contacts.js
-  // constants are all in 720-space; tap is the only mobile-specific math).
   const r = canvas.getBoundingClientRect();
   const x = (ev.clientX - r.left) / scaleFactor;
   const y = (ev.clientY - r.top) / scaleFactor;
-  if (!isInsideScope(x, y) || state.readyStrikes <= 0) return flickerOrdnance();
+  if (!isInsideScope(x, y)) return;                         // tap on scope chrome → ignore
+  if (state.readyStrikes <= 0 || !state.safetyOff) {
+    flickerOrdnance();                                       // no missile, or safety still ON
+    return;
+  }
+  state.targetReticle = { x, y, t0: now() };
+  targetLock();
+  logT(`TARGET LOCK — ${fmtBearing(bearingFromRig({x,y}))}/${fmtRange(Math.hypot(x - RIG.x, y - RIG.y))}`);
+});
+
+// 発射 launch — commit a strike at the locked target.
+// Required: safety OFF, target set, ≥1 ready missile, wave_running.
+function commitLaunch() {
+  if (state.phase !== 'wave_running') return;
+  if (!state.safetyOff || !state.targetReticle || state.readyStrikes <= 0) {
+    flickerOrdnance();
+    return;
+  }
+  const { x, y } = state.targetReticle;
   state.pendingStrikes.push({ x, y, t0: now() });
   state.readyStrikes -= 1;
   state.waveStats.strikesUsed += 1;
   state.runStats.totalStrikes += 1;
+  state.targetReticle = null;
+  state.safetyOff = false;            // auto-reset — every shot earns its own arming ritual
   setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   strikeWhoosh();
+  launchPress();
   logT(`MUNITION RELEASED — TGT ${fmtBearing(bearingFromRig({x,y}))}/${fmtRange(Math.hypot(x - RIG.x, y - RIG.y))}`);
-});
+}
+
+// Toggle the safety. Locked while charging — must wait for ≥1 ready missile.
+function toggleSafety() {
+  if (state.phase !== 'wave_running') return;
+  if (state.readyStrikes <= 0 && !state.safetyOff) {
+    flickerOrdnance();                 // can't arm with no missile loaded
+    return;
+  }
+  state.safetyOff = !state.safetyOff;
+  if (!state.safetyOff) state.targetReticle = null;     // safety re-engaged → target cleared
+  safetyClick();
+}
 window.addEventListener('keydown', (ev) => {
   if (ev.code === 'Space' || ev.code === 'Enter') { ev.preventDefault(); advanceFromPrompt(); }
 });
@@ -356,6 +447,20 @@ function bindOverlayAdvance(el) {
 }
 bindOverlayAdvance(document.getElementById('intro'));
 bindOverlayAdvance(document.getElementById('endcard'));
+
+// Launch console controls — pointerdown for iOS reliability + stopPropagation
+// so taps inside the console don't bubble to the overlay-advance / canvas paths.
+safetyBtn.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();
+  ev.stopPropagation();
+  toggleSafety();
+});
+launchBtn.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (launchBtn.disabled) { flickerOrdnance(); return; }
+  commitLaunch();
+});
 
 function advanceFromPrompt() {
   if (state.phase === 'intro') { hideIntro(); startRun(); }
