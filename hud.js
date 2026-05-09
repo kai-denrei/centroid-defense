@@ -22,6 +22,12 @@ export function initHUD() {
   dom.endcardTable = $('endcard-table');
   dom.endcardPrompt = $('endcard-prompt');
   dom.intro = $('intro');
+  // v2 biomass + codex
+  dom.biomassVal = $('biomass-val');
+  dom.codexBtn = $('codex-btn');
+  dom.codexModal = $('codex-modal');
+  dom.codexClose = $('codex-close');
+  dom.codexBody = $('codex-body');
 }
 
 export function updateHUD(state) {
@@ -50,6 +56,57 @@ export function updateHUD(state) {
   const live = state.contacts.filter(c => c.alive).length;
   dom.contactCount.textContent = String(live);
   dom.strikesUsed.textContent = String(state.runStats.totalStrikes);
+  // v2 biomass
+  if (dom.biomassVal) dom.biomassVal.textContent = String(state.biomass || 0);
+}
+
+// CODEX MODAL — render the bestiary grouped by category.
+// Locked entries (zero kills) show category + threat tier + a "not yet
+// catalogued" stub. Unlocked entries fill in the full clinical note.
+import { BESTIARY } from './bestiary.js';
+const CATEGORY_HEADS = {
+  pelagic: 'PELAGIC · MID-WATER',
+  benthic: 'BENTHIC · BOTTOM-DWELLING',
+  swarm: 'SWARM · MICRO-FAUNA',
+  apex: 'APEX · MEGAFAUNA',
+  specialist: 'SPECIALIST · IRREGULAR',
+};
+const CATEGORY_ORDER = ['pelagic', 'benthic', 'swarm', 'apex', 'specialist'];
+
+export function renderCodex(codex) {
+  if (!dom.codexBody) return;
+  const groups = {};
+  for (const sp of BESTIARY) (groups[sp.category] ||= []).push(sp);
+  const out = [];
+  for (const cat of CATEGORY_ORDER) {
+    if (!groups[cat]) continue;
+    out.push(`<div class="group-head">${CATEGORY_HEADS[cat]}</div>`);
+    for (const sp of groups[cat]) {
+      const kills = (codex && codex[sp.id]) || 0;
+      const locked = kills === 0;
+      out.push(`<div class="entry ${locked ? 'locked' : ''}">
+        <div>
+          <div class="taxon"><span class="genus">${sp.genus}</span> <span class="species">${sp.species}</span></div>
+          <div class="meta">${sp.class} · ${sp.scale} · BIOMASS ${sp.biomass}</div>
+        </div>
+        <div>
+          <div class="threat ${sp.threat}">${sp.threat.toUpperCase()}</div>
+          <div class="kills">${locked ? '— LOCKED —' : `${kills} KILLED`}</div>
+        </div>
+        <div class="note">${locked ? '// CONTACT NOT YET CATALOGUED — STRIKE ONE TO UNLOCK' : sp.note}</div>
+      </div>`);
+    }
+  }
+  dom.codexBody.innerHTML = out.join('');
+}
+
+// Open / close handlers — caller wires the button events to these.
+export function openCodex(codex) {
+  renderCodex(codex);
+  dom.codexModal.classList.remove('hide');
+}
+export function closeCodex() {
+  dom.codexModal.classList.add('hide');
 }
 
 // Rebuild the ordnance pips with charging-aware visualization.
@@ -155,7 +212,7 @@ function hitsCellHtml(hits, inRadius) {
 }
 
 // ENDCARD — wave end, run complete, game over.
-export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accuracyPct, hits, inRadius, integrity, allDestroyed }) {
+export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accuracyPct, hits, inRadius, biomassEarned, biomassTotal, integrity, allDestroyed }) {
   dom.endcardTitle.textContent = allDestroyed
     ? `WAVE ${wave} COMPLETE`
     : `WAVE ${wave} — RIG INTEGRITY CRITICAL`;
@@ -166,6 +223,7 @@ export function showWaveEndcard({ wave, name, strikesUsed, strikeBudget, accurac
   appendStat('STRIKES USED', `${strikesUsed} / ${strikeBudget}`);
   appendStatHTML('TOTAL HITS', hitsCellHtml(hits || 0, inRadius || 0));
   appendStat('BEST ACCURACY', accuracyPct == null ? '—' : `${Math.round(accuracyPct)}%`);
+  appendStatHTML('BIOMASS COLLECTED', `<span style="color:var(--p-hot)">+${biomassEarned || 0}</span> · TOTAL <span style="color:var(--p-hot)">${biomassTotal || 0}</span>`);
   appendStat('RIG INTEGRITY', `${Math.round(integrity)}%`);
   dom.endcardPrompt.textContent = '[SPACE] CONTINUE';
   dom.endcard.classList.add('show');
@@ -179,12 +237,14 @@ export function showRunCompleteCard({ runStats, integrity }) {
   const totalHits = runStats.waves.reduce((s, w) => s + (w.hits || 0), 0);
   const totalInRadius = runStats.waves.reduce((s, w) => s + (w.inRadius || 0), 0);
   appendStatHTML('TOTAL HITS (RUN)', hitsCellHtml(totalHits, totalInRadius));
+  const totalBiomass = runStats.waves.reduce((s, w) => s + (w.biomass || 0), 0);
+  appendStatHTML('TOTAL BIOMASS (RUN)', `<span style="color:var(--p-hot)">${totalBiomass}</span>`);
   // summary table
   const tbl = dom.endcardTable;
   tbl.style.display = '';
   tbl.innerHTML = `
     <thead><tr>
-      <th>WAVE</th><th>ARCHETYPE</th><th>STRIKES</th><th>HITS</th><th>BEST ACC.</th>
+      <th>WAVE</th><th>ARCHETYPE</th><th>STRIKES</th><th>HITS</th><th>BEST ACC.</th><th>BIOMASS</th>
     </tr></thead>
     <tbody>
       ${runStats.waves.map(w => `<tr>
@@ -193,6 +253,7 @@ export function showRunCompleteCard({ runStats, integrity }) {
         <td>${w.strikesUsed}/${w.budget}</td>
         <td>${hitsCellHtml(w.hits || 0, w.inRadius || 0)}</td>
         <td>${w.bestAcc == null ? '—' : Math.round(w.bestAcc) + '%'}</td>
+        <td style="color:var(--p-hot)">+${w.biomass || 0}</td>
       </tr>`).join('')}
     </tbody>`;
   dom.endcardPrompt.textContent = '[SPACE] NEW RUN';

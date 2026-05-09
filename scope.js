@@ -137,24 +137,40 @@ export function drawSweep(ctx, sweepAngle) {
 }
 
 // Blips: each as bloom (large faint) + core (small bright). Decay handled by caller.
+// Parse '#rrggbb' (or short '#rgb') into "r,g,b" string for rgba() interpolation.
+function hexToRgb(hex) {
+  if (!hex || hex[0] !== '#') return '136,255,136';
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+const RGB_CACHE = new Map();
+function rgbCached(hex) {
+  if (!RGB_CACHE.has(hex)) RGB_CACHE.set(hex, hexToRgb(hex));
+  return RGB_CACHE.get(hex);
+}
+
 export function drawBlips(ctx, blips, now) {
   for (const b of blips) {
     const age = now - b.t0;
     const TAU_DECAY = 1.5;
     const alpha = Math.exp(-age / TAU_DECAY);
     if (alpha < 0.02) continue;
-    const r = 3 + b.weight * 1.4;            // weight scales blip size
+    const scale = b.blipScale != null ? b.blipScale : 1.0;
+    const r = (3 + b.weight * 1.4) * scale;
+    const rgb = b.blipColor ? rgbCached(b.blipColor) : '136,255,136';
     // bloom
     const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 4.5);
-    grad.addColorStop(0, `rgba(136, 255, 136, ${0.55 * alpha})`);
-    grad.addColorStop(0.4, `rgba(136, 255, 136, ${0.18 * alpha})`);
-    grad.addColorStop(1, 'rgba(136, 255, 136, 0)');
+    grad.addColorStop(0, `rgba(${rgb}, ${0.55 * alpha})`);
+    grad.addColorStop(0.4, `rgba(${rgb}, ${0.18 * alpha})`);
+    grad.addColorStop(1, `rgba(${rgb}, 0)`);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(b.x, b.y, r * 4.5, 0, TAU);
     ctx.fill();
-    // core
-    ctx.fillStyle = `rgba(220, 255, 220, ${alpha})`;
+    // hot core — desaturate toward white for legibility
+    ctx.fillStyle = `rgba(240, 255, 240, ${alpha})`;
     ctx.beginPath();
     ctx.arc(b.x, b.y, r * 0.55, 0, TAU);
     ctx.fill();

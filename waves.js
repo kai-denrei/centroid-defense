@@ -1,21 +1,14 @@
-// waves.js — five hand-authored waves teaching one centroid archetype each.
-// Coordinates are canvas pixels (origin top-left). Rig at (360, 360).
-// Spawn config: { t, count, formation, center, spread, weight?, vx?, vy?, axis?, aim? }
-//   t          — seconds after wave start when this spawn fires
-//   count      — number of contacts in this spawn
-//   formation  — 'cluster' (gaussian-ish disc) or 'line'
-//   center     — [x, y] pixel anchor for the formation (negative or > canvas-size = off-edge)
-//   spread     — px radius for cluster, total length for line
-//   weight     — mass multiplier; heavy contacts pull centroid harder
-//   vx, vy     — velocity in px/s. With aim:'rig', |v| is the speed magnitude
-//   axis       — 'x' or 'y' for line formation orientation
-//   aim        — 'rig' to override (vx,vy) so each contact homes at rig at speed |v|
-
-// v1.4.1 tunes (per Gerald: slower for first missions, more deliberate cinematic):
-// - Wave 1 vy=12 (was 22), Wave 2 vy=14, Wave 3 vy=18, Wave 4 vy=20.
-// - Wave 5 keeps the slow/fast staggered structure but slowed: 14/24 (was 16/28).
-// - Strike delay also moved to 2.4s (see contacts.js STRIKE_DELAY) — combined with
-//   slower contacts, the early waves give the player real read-time before commit.
+// waves.js — DEEPWATCH v2 wave configs.
+//
+// Each spawn now references species (uniform array OR weighted object) from the
+// bestiary instead of hard-coding `weight`. `useSpeciesSpeed: true` would scale
+// velocity per species; default keeps wave-author velocity (vy field) for tight
+// control over wave pacing.
+//
+// Species pools introduce per-contact RNG diversity within a single spawn —
+// e.g. an "incoming swarm" with 70% Acidoplankton + 30% Sulfovermis produces a
+// believable mixed shoal where individual blips have different blip color/scale,
+// jitter, and biomass yield, but the formation centroid still reads cleanly.
 
 export const WAVES = [
   {
@@ -24,8 +17,12 @@ export const WAVES = [
     archetype: 'cluster',
     strikeBudget: 2,
     spawns: [
-      { t: 0.0, count: 4, formation: 'cluster', center: [320, -30],  spread: 22, weight: 1, vy: 12, aim: 'rig' },
-      { t: 1.5, count: 4, formation: 'cluster', center: [400, 750],  spread: 22, weight: 1, vy: 12, aim: 'rig' },
+      // North: a mixed swarm-grade shoal — light, fast, easy first kill
+      { t: 0.0, count: 5, formation: 'cluster', center: [320, -30], spread: 26, vy: 12, aim: 'rig',
+        species: { 'acidoplankton-tenuis': 0.6, 'sulfovermis-gregarius': 0.4 } },
+      // South: gelatinous mid-tier pelagic
+      { t: 1.5, count: 4, formation: 'cluster', center: [400, 750], spread: 24, vy: 12, aim: 'rig',
+        species: { 'sulfomedusa-abyssi': 0.7, 'chalcophyma-pulsans': 0.3 } },
     ],
   },
   {
@@ -34,10 +31,12 @@ export const WAVES = [
     archetype: 'linear',
     strikeBudget: 2,
     spawns: [
-      // line from west, drifting east toward rig
-      { t: 0.0, count: 4, formation: 'line', center: [-30, 360], spread: 160, weight: 1, vy: 14, axis: 'y', aim: 'rig' },
-      // line from east, drifting west toward rig — staggered
-      { t: 2.0, count: 4, formation: 'line', center: [750, 360], spread: 160, weight: 1, vy: 14, axis: 'y', aim: 'rig' },
+      // West line: chitin-mantled cephalopodiforms
+      { t: 0.0, count: 4, formation: 'line', center: [-30, 360], spread: 160, vy: 14, axis: 'y', aim: 'rig',
+        species: { 'acidonecton-vorax': 1 } },
+      // East line: pulser bells, irregular jitter
+      { t: 2.0, count: 4, formation: 'line', center: [750, 360], spread: 160, vy: 14, axis: 'y', aim: 'rig',
+        species: { 'chalcophyma-pulsans': 0.7, 'vitreonephes-glacialis': 0.3 } },
     ],
   },
   {
@@ -46,10 +45,11 @@ export const WAVES = [
     archetype: 'bimodal',
     strikeBudget: 2,
     spawns: [
-      // two clusters from the north, separated by ~240px. Naive centroid lies in the gap.
-      // The trap: a centered strike kills nobody. Either cluster needs its own strike.
-      { t: 0.0, count: 4, formation: 'cluster', center: [240, -30], spread: 22, weight: 1, vy: 18, aim: 'rig' },
-      { t: 0.0, count: 4, formation: 'cluster', center: [480, -30], spread: 22, weight: 1, vy: 18, aim: 'rig' },
+      // Two pelagic clusters separated by ~240px — naive centroid lands in the gap
+      { t: 0.0, count: 4, formation: 'cluster', center: [240, -30], spread: 24, vy: 18, aim: 'rig',
+        species: { 'acidonecton-vorax': 0.6, 'fluorapate-rigidum': 0.4 } },
+      { t: 0.0, count: 4, formation: 'cluster', center: [480, -30], spread: 24, vy: 18, aim: 'rig',
+        species: { 'acidonecton-vorax': 0.6, 'chitinotherium-fossor': 0.4 } },
     ],
   },
   {
@@ -58,10 +58,12 @@ export const WAVES = [
     archetype: 'weighted',
     strikeBudget: 2,
     spawns: [
-      // light cluster from the west, heavy single from the east — different mass, opposite sides.
-      // The lesson: weighted centroid pulls toward the heavy; commit a strike to it specifically.
-      { t: 0.0, count: 4, formation: 'cluster', center: [-30, 300], spread: 30, weight: 1, vy: 20, aim: 'rig' },
-      { t: 0.0, count: 1, formation: 'cluster', center: [750, 420], spread: 4,  weight: 4, vy: 20, aim: 'rig' },
+      // Light swarm decoy from west
+      { t: 0.0, count: 5, formation: 'cluster', center: [-30, 300], spread: 32, vy: 20, aim: 'rig',
+        species: { 'acidoplankton-tenuis': 0.5, 'halophila-minima': 0.5 } },
+      // Heavy benthic apex from east — pulls weighted centroid hard
+      { t: 0.5, count: 1, formation: 'cluster', center: [750, 420], spread: 4, vy: 18, aim: 'rig',
+        species: { 'barytolithus-reptans': 1 } },
     ],
   },
   {
@@ -70,10 +72,12 @@ export const WAVES = [
     archetype: 'staggered',
     strikeBudget: 3,
     spawns: [
-      // slow lead group — northwest corner — gentle drift, ample lead-time
-      { t: 0.0, count: 4, formation: 'cluster', center: [-30, 80],  spread: 26, weight: 1, vy: 14, aim: 'rig' },
-      // fast follow group — southeast — 2.5s stagger
-      { t: 2.5, count: 4, formation: 'cluster', center: [750, 640], spread: 26, weight: 1, vy: 24, aim: 'rig' },
+      // Slow lead group — drifters and mimics. The mimic appears small until close.
+      { t: 0.0, count: 4, formation: 'cluster', center: [-30, 80], spread: 28, vy: 14, aim: 'rig',
+        species: { 'vitreonephes-glacialis': 0.5, 'cryptocnidaria-mimica': 0.25, 'lampyronoctis-abyssalis': 0.25 } },
+      // Fast follow group — predator-class iron-armored, with a single specialist
+      { t: 2.5, count: 4, formation: 'cluster', center: [750, 640], spread: 26, vy: 24, aim: 'rig',
+        species: { 'pyrithionyx-ferrosus': 0.75, 'acidocoryne-errans': 0.25 } },
     ],
   },
 ];

@@ -614,6 +614,158 @@
     letter-spacing: 0.18em;
     animation: blink 1s steps(2) infinite;
   }
+  /* ── v2 BIOMASS + CODEX HUD ─────────────────────────────────────────── */
+  #biomass-bay {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    margin-right: 14px;
+  }
+  #codex-btn {
+    background: transparent;
+    border: 1px solid var(--p-dim);
+    color: var(--p-mid);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 200ms;
+  }
+  #codex-btn:hover, #codex-btn:active {
+    color: var(--p-hot);
+    border-color: var(--p-mid);
+    background: rgba(136, 255, 136, 0.05);
+  }
+  #biomass-bay .biomass-readout {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  #biomass-bay .lbl { color: var(--p-dim); font-size: 9px; letter-spacing: 0.18em; }
+  #biomass-bay .val {
+    color: var(--p-hot);
+    font-size: 14px;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(136,255,136,0.5);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* CODEX MODAL — full-screen overlay listing the bestiary */
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 10, 5, 0.92);
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    cursor: default;
+  }
+  .modal.hide { display: none; }
+  .modal-frame {
+    width: min(720px, 100%);
+    height: min(640px, 100%);
+    background: var(--bg-chrome);
+    border: 1px solid var(--p-mid);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 22px rgba(136, 255, 136, 0.18);
+  }
+  .modal-frame header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--p-dim);
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+  }
+  .modal-frame header button {
+    background: transparent;
+    border: 0;
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+  }
+  .modal-frame footer {
+    padding: 8px 14px;
+    border-top: 1px solid var(--p-dim);
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-align: center;
+  }
+  #codex-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    color: var(--p-mid);
+    font-size: 11px;
+    line-height: 1.55;
+    letter-spacing: 0.04em;
+  }
+  #codex-body .group-head {
+    color: var(--amber);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin: 16px 0 6px 0;
+    border-bottom: 1px solid var(--p-dim);
+    padding-bottom: 3px;
+  }
+  #codex-body .group-head:first-child { margin-top: 0; }
+  #codex-body .entry {
+    display: grid;
+    grid-template-columns: 1fr 90px;
+    gap: 4px 14px;
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(58, 140, 58, 0.25);
+  }
+  #codex-body .entry:last-child { border-bottom: 0; }
+  #codex-body .entry.locked { opacity: 0.42; }
+  #codex-body .entry .taxon {
+    color: var(--p-hot);
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: 0.04em;
+  }
+  #codex-body .entry .taxon .genus { font-style: italic; }
+  #codex-body .entry .taxon .species { font-style: italic; }
+  #codex-body .entry .meta {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+  }
+  #codex-body .entry .kills {
+    text-align: right;
+    color: var(--amber);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  #codex-body .entry.locked .kills { color: var(--p-dim); }
+  #codex-body .entry .threat {
+    text-align: right;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  #codex-body .entry .threat.low    { color: var(--p-mid); }
+  #codex-body .entry .threat.medium { color: var(--amber-dim); }
+  #codex-body .entry .threat.high   { color: var(--amber); }
+  #codex-body .entry .threat.apex   { color: var(--red); text-shadow: 0 0 6px rgba(255,51,34,0.4); }
+  #codex-body .entry .note {
+    grid-column: 1 / -1;
+    color: var(--p-mid);
+    font-size: 10px;
+    line-height: 1.6;
+    margin-top: 2px;
+  }
+  #codex-body .entry.locked .note { content: "// CONTACT NOT YET CATALOGUED — STRIKE ONE TO UNLOCK"; }
+
   /* build version indicator on intro — confirms which build is running */
   #build-tag {
     position: absolute;
@@ -884,6 +1036,13 @@
         <span class="full"><span>WAVE </span><span class="wave" id="wave-num">—</span><span> · MISSION </span><span id="mission-time">T+00:00</span></span>
         <span class="short">W<span id="wave-num-short">—</span> · <span id="mission-time-short">00:00</span></span>
       </div>
+      <div id="biomass-bay">
+        <button id="codex-btn" type="button" aria-label="Bestiary">⌬ BESTIARY</button>
+        <div class="biomass-readout">
+          <span class="lbl">BIOMASS</span>
+          <span class="val" id="biomass-val">0</span>
+        </div>
+      </div>
       <div id="ord-bay">
         <div id="ord-pips"><span class="label">ORD</span></div>
         <div id="ord-status" class="status">STANDBY</div>
@@ -915,7 +1074,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v1.5.0</div>
+        <div id="build-tag">v2.0.0-α · deepdefense</div>
       </div>
     </main>
 
@@ -971,6 +1130,16 @@
         <canvas id="missilecam" width="200" height="120"></canvas>
       </div>
     </footer>
+    <div id="codex-modal" class="modal hide">
+      <div class="modal-frame">
+        <header>
+          <span>// BESTIARY · DEEPWATCH SCIENTIFIC SURVEY</span>
+          <button id="codex-close" type="button" aria-label="Close">[ × CLOSE ]</button>
+        </header>
+        <div id="codex-body"></div>
+        <footer>SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS</footer>
+      </div>
+    </div>
   </div>
 
   <div id="rotate-hint">
@@ -979,7 +1148,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=1.5.0"></script>
+  <script type="module" src="./main.js?v=2.0.0-alpha"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Auto-reload when a new SW takes control. Combined with skipWaiting() in

@@ -9,13 +9,31 @@ export const STRIKE_MAX_DMG = 100;
 export const STRIKE_K = 1.5;       // falloff exponent — k=1.5 rewards precision without making near-misses worthless
 export const STRIKE_DELAY = 2.4;   // seconds — sink time for the missile cinematic
 
-// Contact factory. hp default = 20 light / 80 heavy (weight*20).
-export function makeContact(x, y, vx, vy, weight = 1) {
+// Contact factory. v2: species-driven. Stats (hp, weight, speed, biomass,
+// blipColor, jitterAmp, abilities) are pulled from the bestiary entry.
+// Per-contact ±15% RNG variance on hp keeps killcount-based gameplay honest
+// without making the centroid math unstable.
+import { SPECIES_BY_ID, DEFAULT_SPECIES_ID } from './bestiary.js';
+
+export function makeContact(x, y, vx, vy, opts = {}) {
+  // back-compat: opts may be a number (weight) or an object
+  if (typeof opts === 'number') opts = { weight: opts };
+  const speciesId = opts.speciesId || DEFAULT_SPECIES_ID;
+  const sp = SPECIES_BY_ID[speciesId] || SPECIES_BY_ID[DEFAULT_SPECIES_ID];
+  // ±15% HP variance for diversity within a wave
+  const hpVar = 1 + (Math.random() - 0.5) * 0.30;
+  const hp = Math.max(2, Math.round(sp.hp * hpVar));
+  const weight = (opts.weight != null) ? opts.weight : sp.weight;
   return {
     x, y, vx, vy,
+    speciesId,
     weight,
-    hp: weight * 20,
-    maxHp: weight * 20,
+    hp, maxHp: hp,
+    biomass: sp.biomass,
+    abilities: sp.abilities,
+    blipColor: sp.blipColor,
+    blipScale: sp.blipScale,
+    jitterAmp: sp.jitterAmp != null ? sp.jitterAmp : 1.0,
     alive: true,
     aliveAt: performance.now() / 1000,
     lastBleepAt: 0,
@@ -33,11 +51,14 @@ export function toward(cx, cy, s) {
 }
 
 // Materialize one spawn config into N contacts.
-// `aim: 'rig'` overrides per-contact velocity so each contact heads at rig
-// (path length differs across the formation, so outer contacts arrive later).
+// v2: spawn.species accepts an array (uniform pick) or object {id: weight}
+//     (weighted pick). Each contact gets its own species roll → real diversity
+//     within a single spawn (e.g., a swarm with 70% Acidoplankton + 30%
+//     Sulfovermis). aim: 'rig' overrides per-contact velocity to head at rig.
+import { pickSpecies, SPECIES_BY_ID, DEFAULT_SPECIES_ID } from './bestiary.js';
 export function materializeSpawn(spawn) {
   const out = [];
-  const { count, formation, center, spread, weight = 1, vx = 0, vy = 18, axis = 'x', aim } = spawn;
+  const { count, formation, center, spread, vx = 0, vy = 18, axis = 'x', aim, species } = spawn;
   const [cx, cy] = center;
   for (let i = 0; i < count; i++) {
     let x, y;
@@ -54,13 +75,22 @@ export function materializeSpawn(spawn) {
     } else {
       x = cx; y = cy;
     }
+    // species pick — falls back to spawn.weight if no species pool given (v1 compat)
+    const speciesId = species ? pickSpecies(species) : (spawn.speciesId || DEFAULT_SPECIES_ID);
+    const sp = SPECIES_BY_ID[speciesId] || SPECIES_BY_ID[DEFAULT_SPECIES_ID];
+    // velocity: spawn.vy is the target speed magnitude; species speed can scale it
+    // (default speedScale 1.0 leaves wave authoring intact, but apex/swarm tweak)
+    const baseSpeed = Math.hypot(vx, vy) || vy || sp.speed || 18;
+    const speedScale = (spawn.useSpeciesSpeed) ? (sp.speed / 18) : 1;
+    const speed = baseSpeed * speedScale;
     let cvx = vx, cvy = vy;
     if (aim === 'rig') {
-      const speed = Math.hypot(vx, vy) || vy || 18;
       const v = toward(x, y, speed);
       cvx = v.vx; cvy = v.vy;
+    } else if (speedScale !== 1) {
+      cvx *= speedScale; cvy *= speedScale;
     }
-    out.push(makeContact(x, y, cvx, cvy, weight));
+    out.push(makeContact(x, y, cvx, cvy, { speciesId, weight: spawn.weight }));
   }
   return out;
 }
@@ -74,10 +104,12 @@ export function updateContacts(contacts, dt, now) {
   let rigDamage = 0;
   for (const c of contacts) {
     if (!c.alive) continue;
-    // jitter re-roll
+    // jitter re-roll — scaled by species jitterAmp so erratic specialists
+    // (Acidocoryne, Leviathys) are genuinely harder to lead than schoolers
     if (!c._jitterAt || now - c._jitterAt > JITTER_PERIOD) {
-      c._jx = (Math.random() - 0.5) * 2 * JITTER_PX_PER_S;
-      c._jy = (Math.random() - 0.5) * 2 * JITTER_PX_PER_S;
+      const amp = JITTER_PX_PER_S * (c.jitterAmp || 1);
+      c._jx = (Math.random() - 0.5) * 2 * amp;
+      c._jy = (Math.random() - 0.5) * 2 * amp;
       c._jitterAt = now;
     }
     c.x += (c.vx + c._jx) * dt;
@@ -170,14 +202,25 @@ export function pruneBlips(blips, now) {
   });
 }
 
-// Apply a depth-charge blast: damage contacts, return {killed, inRadius, trueCentroid}.
-// Side effects are caller's responsibility (state.detonations push, sound, marker).
+// Apply a depth-charge blast. Returns {killed, inRadius, trueCentroid, biomass}.
+// `armored` species (Barytolithus, Megacidodon, Architeuthys, ordnance-soak
+// specialists) take reduced ordnance damage. Biomass total tallied for kills.
 export function applyBlast(contacts, blastPos) {
   const inRadius = contacts.filter(c => c.alive && Math.hypot(c.x - blastPos.x, c.y - blastPos.y) <= STRIKE_RADIUS);
   let killed = 0;
+  let biomass = 0;
+  const killedSpeciesIds = [];
   for (const c of inRadius) {
-    c.hp -= strikeDamage(c, blastPos);
-    if (c.hp <= 0) { c.alive = false; killed++; }
+    let dmg = strikeDamage(c, blastPos);
+    const armored = c.abilities && (c.abilities.includes('armored') || c.abilities.includes('ordnance-soak'));
+    if (armored) dmg *= 0.5;
+    c.hp -= dmg;
+    if (c.hp <= 0) {
+      c.alive = false;
+      killed++;
+      biomass += c.biomass || 0;
+      killedSpeciesIds.push(c.speciesId);
+    }
   }
-  return { killed, inRadius, trueCentroid: weightedCentroid(inRadius) };
+  return { killed, inRadius, trueCentroid: weightedCentroid(inRadius), biomass, killedSpeciesIds };
 }

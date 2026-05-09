@@ -16,7 +16,7 @@ import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
   fmtTime, fmtBearing, fmtRange,
   showWaveEndcard, showRunCompleteCard, showGameOverCard, hideEndcard,
-  hideIntro, showIntro,
+  hideIntro, showIntro, openCodex, closeCodex,
 } from './hud.js';
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
@@ -103,6 +103,10 @@ const state = {
   readyStrikes: 0, reservedStrikes: 0, gauge: 0,
   safetyOff: false, targetReticle: null,
   pendingStrikes: [], impactLingers: [],
+  // v2 economy + codex
+  biomass: 0,                      // total accumulated this run
+  biomassThisWave: 0,
+  codex: {},                       // { speciesId: kills }
   contacts: [], blips: [],
   detonations: [], turretShots: [],
   centroidMarker: null,
@@ -126,6 +130,8 @@ function startRun() {
   state.runStats = { totalStrikes: 0, wavesCleared: 0, waves: [] };
   state.pendingStrikes = [];
   state.impactLingers = [];
+  state.biomass = 0;
+  state.codex = {};
   clearLog();
   startWave(1);
 }
@@ -144,7 +150,8 @@ function startWave(idx) {
     contacts: [], blips: [], pendingStrikes: [], impactLingers: [],
     centroidMarker: null,
     detonations: [], turretShots: [], turretLastShotAt: 0,
-    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0 },
+    waveStats: { strikesUsed: 0, bestAccuracyPx: null, totalHits: 0, totalInRadius: 0, biomassEarned: 0 },
+    biomassThisWave: 0,
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
   });
@@ -197,7 +204,10 @@ function update(dt, t) {
     if (!c.alive) continue;
     const norm = Math.min(1, rangeFromRig(c) / SCOPE_R);
     if (angleCrossed(state.prevSweep, state.sweep, bearingFromRig(c))) {
-      state.blips.push({ x: c.x, y: c.y, t0: t, weight: c.weight, contactId: c.id });
+      state.blips.push({
+        x: c.x, y: c.y, t0: t, weight: c.weight, contactId: c.id,
+        blipColor: c.blipColor, blipScale: c.blipScale,
+      });
       contactBleep(norm);
     }
     const period = BLEEP_NEAR + (BLEEP_FAR - BLEEP_NEAR) * norm;
@@ -210,14 +220,25 @@ function update(dt, t) {
     state.pendingStrikes = state.pendingStrikes.filter(ps => t - ps.t0 < STRIKE_DELAY);
     for (const ps of due) detonate(ps, t);
   }
-  // auto-turret
+  // auto-turret. Armored species (Barytolithus, Megacidodon, Architeuthys,
+  // Ferrobacterium-soak) take 50% turret damage — they exist precisely to
+  // bypass point defense.
   if (t - state.turretLastShotAt >= TURRET_FIRE_INTERVAL) {
     const tgt = pickTurretTarget(state.contacts);
     if (tgt) {
-      tgt.hp -= TURRET_DPS_PER_SHOT;
+      const armored = tgt.abilities && (tgt.abilities.includes('armored') || tgt.abilities.includes('ordnance-soak'));
+      const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
+      tgt.hp -= dmg;
       state.turretShots.push({ x: tgt.x, y: tgt.y, t0: t });
       state.turretLastShotAt = t;
-      if (tgt.hp <= 0) tgt.alive = false;
+      if (tgt.hp <= 0) {
+        tgt.alive = false;
+        // turret kills also yield biomass + codex (smaller take, but counted)
+        state.biomass += tgt.biomass || 0;
+        state.biomassThisWave += tgt.biomass || 0;
+        state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + (tgt.biomass || 0);
+        if (tgt.speciesId) state.codex[tgt.speciesId] = (state.codex[tgt.speciesId] || 0) + 1;
+      }
     }
   }
   // prune transient effects
@@ -231,7 +252,7 @@ function update(dt, t) {
 }
 
 function detonate(strike, t) {
-  const { killed, inRadius, trueCentroid } = applyBlast(state.contacts, strike);
+  const { killed, inRadius, trueCentroid, biomass, killedSpeciesIds } = applyBlast(state.contacts, strike);
   const inCount = inRadius.length;
   if (trueCentroid) {
     state.centroidMarker = { x: trueCentroid.x, y: trueCentroid.y, t0: t };
@@ -239,14 +260,20 @@ function detonate(strike, t) {
     state.waveStats.bestAccuracyPx = (state.waveStats.bestAccuracyPx == null)
       ? accPx : Math.min(state.waveStats.bestAccuracyPx, accPx);
   }
-  // hit-count tracking — k/n where k = killed, n = contacts inside blast radius
+  // hit-count + biomass + codex bookkeeping
   state.waveStats.totalHits = (state.waveStats.totalHits || 0) + killed;
   state.waveStats.totalInRadius = (state.waveStats.totalInRadius || 0) + inCount;
+  state.biomass += biomass;
+  state.biomassThisWave += biomass;
+  state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + biomass;
+  for (const id of killedSpeciesIds) {
+    state.codex[id] = (state.codex[id] || 0) + 1;
+  }
   state.detonations.push({ x: strike.x, y: strike.y, t0: t });
-  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed, inRadius: inCount });
+  state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed, inRadius: inCount, biomass });
   detonation();
   const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
-  logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%)`);
+  logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%) · +${biomass} BIOMASS`);
 }
 
 function triggerGameOver(t) {
@@ -267,6 +294,7 @@ function finishWave(t, allDestroyed) {
     wave: state.wave, name: w.name, budget: w.strikeBudget,
     strikesUsed: state.waveStats.strikesUsed, bestAcc: accPct,
     hits, inRadius: inRad,
+    biomass: state.waveStats.biomassEarned || 0,
     integrity: state.rigIntegrity,
   });
   state.runStats.wavesCleared = state.wave;
@@ -280,9 +308,11 @@ function finishWave(t, allDestroyed) {
       wave: state.wave, name: w.name, strikesUsed: state.waveStats.strikesUsed,
       strikeBudget: w.strikeBudget, accuracyPct: accPct,
       hits, inRadius: inRad,
+      biomassEarned: state.waveStats.biomassEarned || 0,
+      biomassTotal: state.biomass,
       integrity: state.rigIntegrity, allDestroyed,
     });
-    logT(`WAVE ${state.wave} CLEAR — STAND BY`);
+    logT(`WAVE ${state.wave} CLEAR — +${state.waveStats.biomassEarned || 0} BIOMASS COLLECTED · TOTAL ${state.biomass}`);
   }
 }
 
@@ -460,6 +490,23 @@ launchBtn.addEventListener('pointerdown', (ev) => {
   ev.stopPropagation();
   if (launchBtn.disabled) { flickerOrdnance(); return; }
   commitLaunch();
+});
+
+// Codex modal toggle (v2 bestiary).
+const codexBtn = document.getElementById('codex-btn');
+const codexClose = document.getElementById('codex-close');
+const codexModal = document.getElementById('codex-modal');
+codexBtn.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  openCodex(state.codex);
+});
+codexClose.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  closeCodex();
+});
+codexModal.addEventListener('pointerdown', (ev) => {
+  // tap on backdrop closes, tap on frame does not
+  if (ev.target === codexModal) { ev.preventDefault(); closeCodex(); }
 });
 
 function advanceFromPrompt() {

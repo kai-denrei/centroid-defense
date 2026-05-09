@@ -5,7 +5,7 @@
 // install a fresh cache and old caches are evicted on activate. Asset query
 // strings (?v=ASSET_VER) on top-level scripts must be in lockstep.
 
-const CACHE_VERSION = 'v1.5.0';
+const CACHE_VERSION = 'v2.0.0-alpha';
 const PRECACHE = `dw-precache-${CACHE_VERSION}`;
 const RUNTIME  = `dw-runtime-${CACHE_VERSION}`;
 const ASSET_VER = CACHE_VERSION.replace(/^v/, '');
@@ -19,6 +19,7 @@ const PRECACHE_URLS = [
   './hud.js',
   './audio.js',
   './waves.js',
+  './bestiary.js',
   './offline.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
