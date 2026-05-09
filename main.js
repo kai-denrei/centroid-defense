@@ -4,7 +4,7 @@ import {
   RIG, SCOPE_R, STRIKE_RADIUS, STRIKE_DELAY,
   materializeSpawn, updateContacts, weightedCentroid,
   bearingFromRig, rangeFromRig, angleCrossed,
-  pickTurretTarget, pruneBlips, applyBlast,
+  pruneBlips, applyBlast,
 } from './contacts.js';
 import { WAVES } from './waves.js';
 import {
@@ -13,7 +13,7 @@ import {
   drawGameOverFlash, isInsideScope, drawMissileCam, drawMissileCamFullscreen,
   drawTargetReticle,
 } from './scope.js';
-import { drawBase, seedRipples, initRipplePool, makeDrone } from './base.js';
+import { drawBase, drawDrones, tickDrones, seedRipples, initRipplePool, makeDrone, dronePos } from './base.js';
 import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
   fmtTime, fmtBearing, fmtRange,
@@ -29,19 +29,19 @@ import {
 
 const TAU = Math.PI * 2;
 const SWEEP_PERIOD = 3.0;
-const TURRET_FIRE_INTERVAL_BASE = 0.4;
 const TURRET_DPS_PER_SHOT = 8;
 const BLEEP_NEAR = 0.18, BLEEP_FAR = 1.2;
 const GAUGE_TIME = 6.0;        // seconds for one orbital window to fill
 const IMPACT_LINGER = 0.55;    // seconds the cam shows post-detonation aftermath
 const BUILD_PHASE_DURATION = 25.0;   // seconds between waves to spend biomass
 const DRONE_COST = 20;
-const DRONE_FIRE_RATE_FACTOR = 0.85; // each drone multiplies turret interval by this (faster fire)
-// Computed per state — interval shrinks as drones are deployed.
-function turretInterval(state) {
-  const n = (state.drones && state.drones.length) || 0;
-  return Math.max(0.10, TURRET_FIRE_INTERVAL_BASE * Math.pow(DRONE_FIRE_RATE_FACTOR, n));
-}
+// Independent point-defense intervals. Each turret picks its own nearest
+// live contact and fires; effective rate scales linearly with drone count.
+const RIG_TURRET_INTERVAL = 0.55;
+const DRONE_TURRET_INTERVAL = 0.95;
+// Rig-central turret muzzle position — anchored at the amber turret marker
+// on the baked rig sprite (top of rig hex). Imported via const for clarity.
+const RIG_TURRET_OFFSET_Y = -35;     // ≈ RIG_RADIUS * 0.4 (see base.js)
 
 const canvas = document.getElementById('scope');
 const ctx = canvas.getContext('2d');
@@ -227,6 +227,9 @@ function startWave(idx) {
 }
 
 function update(dt, t) {
+  // Drone orbits advance regardless of which view is active so positions
+  // stay consistent during cam takeover.
+  tickDrones(state.drones, dt);
   // Ripples animate whenever we're showing the sea-base (build phase OR in-wave rig view).
   if (isRigView()) seedRipples(state, dt, t);
   // Build phase tick — auto-advance after BUILD_PHASE_DURATION
@@ -293,26 +296,20 @@ function update(dt, t) {
     state.pendingStrikes = state.pendingStrikes.filter(ps => t - ps.t0 < STRIKE_DELAY);
     for (const ps of due) detonate(ps, t);
   }
-  // auto-turret. Armored species (Barytolithus, Megacidodon, Architeuthys,
-  // Ferrobacterium-soak) take 50% turret damage — they exist precisely to
-  // bypass point defense. Fire interval shrinks per deployed drone (seabase v1).
-  if (t - state.turretLastShotAt >= turretInterval(state)) {
-    const tgt = pickTurretTarget(state.contacts);
-    if (tgt) {
-      const armored = tgt.abilities && (tgt.abilities.includes('armored') || tgt.abilities.includes('ordnance-soak'));
-      const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
-      tgt.hp -= dmg;
-      state.turretShots.push({ x: tgt.x, y: tgt.y, t0: t });
+  // Point-defense — rig central turret + each drone fires independently at
+  // its own nearest live contact. Armored species (Barytolithus, Megacidodon,
+  // Architeuthys, Ferrobacterium-soak) take 50% turret damage.
+  // Rig central
+  if (t - state.turretLastShotAt >= RIG_TURRET_INTERVAL) {
+    if (firePointDefense(t, RIG.x, RIG.y + RIG_TURRET_OFFSET_Y, 'rig', null)) {
       state.turretLastShotAt = t;
-      if (tgt.hp <= 0) {
-        tgt.alive = false;
-        // turret kills also yield biomass + codex (smaller take, but counted)
-        state.biomass += tgt.biomass || 0;
-        state.biomassThisWave += tgt.biomass || 0;
-        state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + (tgt.biomass || 0);
-        if (tgt.speciesId) state.codex[tgt.speciesId] = (state.codex[tgt.speciesId] || 0) + 1;
-      }
     }
+  }
+  // Each drone — their own throttle, own target
+  for (const d of state.drones) {
+    if (t - (d.lastShotAt || 0) < DRONE_TURRET_INTERVAL) continue;
+    const dp = dronePos(d);
+    firePointDefense(t, dp.x, dp.y, 'drone', d);
   }
   // prune transient effects
   state.detonations = state.detonations.filter(d => t - d.t0 < 0.6);
@@ -322,6 +319,36 @@ function update(dt, t) {
   const allSpawned = state.spawnQueue.every(s => s.fired);
   const live = state.contacts.filter(c => c.alive).length;
   if (allSpawned && live === 0 && state.pendingStrikes.length === 0) finishWave(t, true);
+}
+
+// Single shared point-defense fire path: pick the nearest live contact to
+// (originX, originY), apply armored-aware damage, push a turretShot record
+// (with the frozen origin so renderers draw from where it actually fired),
+// update the optional firing drone's facing + throttle.
+function firePointDefense(t, originX, originY, source, drone) {
+  let best = null, bestD = Infinity;
+  for (const c of state.contacts) {
+    if (!c.alive) continue;
+    const dist = Math.hypot(c.x - originX, c.y - originY);
+    if (dist < bestD) { bestD = dist; best = c; }
+  }
+  if (!best) return false;
+  const armored = best.abilities && (best.abilities.includes('armored') || best.abilities.includes('ordnance-soak'));
+  const dmg = armored ? TURRET_DPS_PER_SHOT * 0.5 : TURRET_DPS_PER_SHOT;
+  best.hp -= dmg;
+  state.turretShots.push({ ox: originX, oy: originY, x: best.x, y: best.y, t0: t, source });
+  if (drone) {
+    drone.facing = Math.atan2(best.y - originY, best.x - originX);
+    drone.lastShotAt = t;
+  }
+  if (best.hp <= 0) {
+    best.alive = false;
+    state.biomass += best.biomass || 0;
+    state.biomassThisWave += best.biomass || 0;
+    state.waveStats.biomassEarned = (state.waveStats.biomassEarned || 0) + (best.biomass || 0);
+    if (best.speciesId) state.codex[best.speciesId] = (state.codex[best.speciesId] || 0) + 1;
+  }
+  return true;
 }
 
 function detonate(strike, t) {
@@ -395,11 +422,14 @@ function finishWave(t, allDestroyed) {
 }
 
 // Renders Mode A (radar, during waves) — the existing PPI sonar.
-function renderRadar(t) {
+function renderRadar(t, dt) {
   smearScope(ctx, 0.22);
   drawScopeChrome(ctx);
   drawSweep(ctx, state.sweep);
   drawBlips(ctx, state.blips, t);
+  // Drones are real allied units on the board — show them on the radar
+  // too, not just rig view, so all three views read the same state.
+  drawDrones(ctx, state.drones || [], t, dt || 0);
   drawTurretTracers(ctx, state.turretShots, t);
   drawDetonations(ctx, state.detonations, t);
   drawCentroidMarker(ctx, state.centroidMarker, t);
@@ -443,7 +473,7 @@ function render(t, dt) {
   }
   if (mode === 'cam') drawMissileCamFullscreen(ctx, state, t);
   else if (mode === 'rig') drawBase(ctx, state, t, dt);
-  else renderRadar(t);
+  else renderRadar(t, dt);
 }
 
 // View toggle — only meaningful during wave_running. Build_phase always rig;

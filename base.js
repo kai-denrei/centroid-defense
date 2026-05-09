@@ -203,61 +203,75 @@ function drawRipples(ctx, ripples, t) {
 }
 
 // ── Drone class ─────────────────────────────────────────────────────────────
+// Each drone is an independent point-defense turret: it orbits the rig at
+// its own angular speed and engages its own nearest live contact at
+// DRONE_TURRET_INTERVAL. `facing` is the latest fire angle so the chevron
+// orients toward whatever it last shot at; `lastShotAt` is the throttle.
 export function makeDrone(t) {
   return {
     angle: Math.random() * TAU,
     orbitRadius: DRONE_ORBIT + (Math.random() - 0.5) * 8,
     angularSpeed: DRONE_ANGULAR_SPEED + (Math.random() - 0.5) * 0.08,
     deployedAt: t,
+    lastShotAt: 0,
+    facing: null,             // null = orient along orbit tangent (no engagement)
   };
 }
 
-// Compute world-space drone position. Used by both render and drone-tracer.
-function dronePos(d) {
+// World-space drone position. Used by main.js fire logic and the rig-view
+// renderer so both compute the same point each frame.
+export function dronePos(d) {
   return {
     x: RIG.x + Math.cos(d.angle) * d.orbitRadius,
     y: RIG.y + Math.sin(d.angle) * d.orbitRadius,
   };
 }
 
-// Drone muzzle tracers — for each recent state.turretShot, find the drone
-// closest to the target and draw a brief tracer line + muzzle flash. Also
-// spawns a ripple at the target position so the strike location reads
-// underwater (the contact itself stays hidden).
+// Drone / rig muzzle tracers — for each recent turret shot, draw a tracer
+// from its frozen origin (drone or rig central turret position at fire
+// time) to the target. Also spawns an impact ripple so the strike location
+// reads underwater after the tracer fades.
 function drawDroneTracers(ctx, drones, turretShots, ripples, t) {
-  if (!drones || !drones.length || !turretShots || !turretShots.length) return;
+  if (!turretShots || !turretShots.length) return;
   for (const shot of turretShots) {
     const age = t - shot.t0;
     if (age > 0.12) continue;
-    // pick nearest drone to the shot's target — visually believable
-    let best = null, bestD = Infinity;
-    for (const d of drones) {
-      const p = dronePos(d);
-      const dist = Math.hypot(p.x - shot.x, p.y - shot.y);
-      if (dist < bestD) { bestD = dist; best = d; }
+    // Frozen origin (preferred — drone may have moved since fire); fallback
+    // to nearest-drone for legacy shots without ox/oy.
+    let ox = shot.ox, oy = shot.oy;
+    if (ox == null || oy == null) {
+      if (!drones || !drones.length) continue;
+      let best = null, bestD = Infinity;
+      for (const d of drones) {
+        const p = dronePos(d);
+        const dist = Math.hypot(p.x - shot.x, p.y - shot.y);
+        if (dist < bestD) { bestD = dist; best = d; }
+      }
+      if (!best) continue;
+      const p = dronePos(best);
+      ox = p.x; oy = p.y;
     }
-    if (!best) continue;
-    const p = dronePos(best);
     const fade = 1 - age / 0.12;
-    // tracer line — amber, fades fast
-    ctx.strokeStyle = `rgba(255, 170, 68, ${(fade * 0.85).toFixed(3)})`;
+    // tracer line — color hints at source: phosphor for rig, amber for drone
+    const isRig = shot.source === 'rig';
+    const lineRGB = isRig ? '136, 255, 136' : '255, 170, 68';
+    const flashColor = isRig ? PHOSPHOR_HOT : AMBER;
+    ctx.strokeStyle = `rgba(${lineRGB}, ${(fade * 0.85).toFixed(3)})`;
     ctx.lineWidth = 1.4;
-    ctx.shadowColor = AMBER;
+    ctx.shadowColor = flashColor;
     ctx.shadowBlur = 6 * fade;
     ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
+    ctx.moveTo(ox, oy);
     ctx.lineTo(shot.x, shot.y);
     ctx.stroke();
-    // muzzle flash at drone
+    // muzzle flash at origin
     ctx.fillStyle = `rgba(255, 245, 200, ${(fade * 0.95).toFixed(3)})`;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(ox, oy, 3, 0, TAU); ctx.fill();
     // impact splash at target
-    ctx.fillStyle = `rgba(255, 170, 68, ${(fade * 0.55).toFixed(3)})`;
+    ctx.fillStyle = `rgba(${lineRGB}, ${(fade * 0.55).toFixed(3)})`;
     ctx.beginPath(); ctx.arc(shot.x, shot.y, 4, 0, TAU); ctx.fill();
     ctx.shadowBlur = 0;
-    // First frame of the shot: spawn a ripple at the target so the impact
-    // leaves a visible water trace after the tracer fades. Single ripple
-    // per shot — `_lastRippleSpawnedAt` keyed on shot identity.
+    // One-shot impact ripple so a fading tracer still leaves a water mark.
     if (!shot._rigRippleSpawned) {
       spawnRippleAt(ripples, shot.x, shot.y, t, /*small=*/ true);
       shot._rigRippleSpawned = true;
@@ -265,15 +279,30 @@ function drawDroneTracers(ctx, drones, turretShots, ripples, t) {
   }
 }
 
-function drawDrones(ctx, drones, t, dt) {
+// Tick all drone orbits forward by dt. Called from update() so drone
+// positions advance even when their view (rig/radar) isn't the active
+// render path — keeps the missile-cam takeover from freezing the orbit.
+export function tickDrones(drones, dt) {
+  if (!drones) return;
+  for (const d of drones) d.angle = (d.angle + d.angularSpeed * dt) % TAU;
+}
+
+export function drawDrones(ctx, drones, t, dt) {
   if (!drones || !drones.length) return;
   ctx.save();
   ctx.translate(RIG.x, RIG.y);
   for (const d of drones) {
-    d.angle = (d.angle + d.angularSpeed * dt) % TAU;
     const x = Math.cos(d.angle) * d.orbitRadius;
     const y = Math.sin(d.angle) * d.orbitRadius;
-    const heading = d.angle + Math.PI / 2;     // tangent to orbit (forward direction)
+    // If the drone has engaged a contact recently, point at it (so the
+    // body visibly turns to track underwater targets); otherwise default
+    // to orbit-tangent so it reads as a patrolling unit.
+    const engaged = d.facing != null && d.lastShotAt && (t - d.lastShotAt < 1.5);
+    const tangent = d.angle + Math.PI / 2;
+    // chevron heading: when engaged, +PI/2 because the chevron points "up"
+    // along its local Y axis; we convert facing-angle (atan2 dy,dx) to that
+    // local frame.
+    const heading = engaged ? (d.facing + Math.PI / 2) : tangent;
     // chevron: 3 short lines forming a triangle pointing along heading
     ctx.save();
     ctx.translate(x, y);

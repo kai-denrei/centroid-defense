@@ -319,18 +319,28 @@ export function drawTurretTracers(ctx, tracers, now) {
     const age = now - t.t0;
     if (age > 0.1) continue;
     const a = 1 - age / 0.1;
-    ctx.strokeStyle = `rgba(220, 255, 220, ${a})`;
+    // Frozen origin (rig central or drone position at fire time); legacy
+    // shots without ox/oy fall back to rig center.
+    const ox = t.ox != null ? t.ox : RIG.x;
+    const oy = t.oy != null ? t.oy : RIG.y;
+    // Drone shots are amber-tinged on the radar so the operator can tell
+    // them apart from the rig's own fire.
+    const isRig = t.source !== 'drone';
+    const lineRGBA = isRig
+      ? `rgba(220, 255, 220, ${a})`
+      : `rgba(255, 220, 160, ${a})`;
+    ctx.strokeStyle = lineRGBA;
     ctx.lineWidth = 1.4;
-    ctx.shadowColor = HOT;
+    ctx.shadowColor = isRig ? HOT : AMBER;
     ctx.shadowBlur = 6;
     ctx.beginPath();
-    ctx.moveTo(RIG.x, RIG.y);
+    ctx.moveTo(ox, oy);
     ctx.lineTo(t.x, t.y);
     ctx.stroke();
-    // muzzle flash dot
-    ctx.fillStyle = `rgba(220,255,220, ${a})`;
+    // muzzle flash dot at origin
+    ctx.fillStyle = lineRGBA;
     ctx.beginPath();
-    ctx.arc(RIG.x, RIG.y, 3 * a, 0, TAU);
+    ctx.arc(ox, oy, 3 * a, 0, TAU);
     ctx.fill();
   }
   ctx.restore();
