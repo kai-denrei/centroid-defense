@@ -258,6 +258,113 @@
     cursor: crosshair;
     background: #030604;
   }
+  /* ── BUILD PHASE PANE ──────────────────────────────────────────────────
+     Shares the launch-pane slot. Hidden by default; shown when body has
+     the `.phase-build` class, which is toggled by the phase machine.
+     During build_phase the launch-pane hides and #build-pane takes over. */
+  body.phase-build #launch-pane { display: none; }
+  #build-pane {
+    display: none;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 280px;
+  }
+  body.phase-build #build-pane { display: flex; }
+  #build-header {
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .build-frame {
+    /* reuses .caution-frame stripe but with phosphor-mid stripe instead of amber */
+    border-image: repeating-linear-gradient(
+      45deg,
+      var(--p-mid) 0 10px,
+      #1a1a1a 10px 20px
+    ) 4 !important;
+    min-height: 84px !important;
+  }
+  #build-readout {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+  }
+  #build-readout .status {
+    color: var(--p-hot);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.4);
+  }
+  #build-readout .biomass-line {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+  }
+  #build-readout .biomass-line span {
+    color: var(--p-hot);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .build-button, .build-ready {
+    background: transparent;
+    border: 1px solid var(--p-mid);
+    color: var(--p-hot);
+    font-family: var(--mono);
+    cursor: pointer;
+    padding: 0;
+    transition: background 180ms, border-color 180ms, color 180ms;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  .build-button {
+    width: 90px; height: 64px;
+  }
+  .build-button .lbl { font-size: 10px; letter-spacing: 0.14em; line-height: 1.1; }
+  .build-button .cost { font-size: 9px; letter-spacing: 0.10em; color: var(--amber); }
+  .build-button:hover, .build-button:active {
+    background: rgba(136, 255, 136, 0.08);
+    border-color: var(--p-hot);
+    text-shadow: 0 0 6px rgba(136, 255, 136, 0.5);
+  }
+  .build-button.no-funds { opacity: 0.4; cursor: not-allowed; }
+  .build-button.no-funds:hover { background: transparent; }
+  .build-ready {
+    width: 60px; height: 64px;
+    border-color: var(--amber-dim);
+    color: var(--amber);
+  }
+  .build-ready .t { font-size: 10px; letter-spacing: 0.18em; }
+  .build-ready .timer {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.4);
+  }
+  .build-ready.urgent .timer {
+    color: var(--red);
+    text-shadow: 0 0 6px rgba(255, 51, 34, 0.6);
+    animation: blink 0.5s steps(2) infinite;
+  }
+  .build-ready:hover, .build-ready:active {
+    background: rgba(255, 170, 68, 0.08);
+    border-color: var(--amber);
+  }
+
   /* ── LAUNCH CONSOLE ─────────────────────────────────────────────────────
      Multi-phase launch UI. Safety toggle on the left, status readout in
      the middle, big red 発射 button on the right with yellow/black caution
@@ -1188,12 +1295,29 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* LAUNCH CONSOLE on mobile — full-width strip between comms and cam */
-    #launch-pane {
+    /* LAUNCH/BUILD CONSOLES on mobile — full-width strip between comms and cam */
+    #launch-pane, #build-pane {
       flex: 0 0 86px;
       width: 100dvw;
       padding: 4px 6px 6px;
     }
+    body.phase-build #launch-pane { display: none; }
+    body:not(.phase-build) #build-pane { display: none; }
+    #build-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
+    .build-frame {
+      padding: 4px 8px;
+      gap: 8px;
+      min-height: 70px !important;
+      height: 70px;
+    }
+    .build-button { width: 78px; height: 56px; }
+    .build-button .lbl { font-size: 9px; }
+    .build-button .cost { font-size: 8px; }
+    .build-ready { width: 50px; height: 56px; }
+    .build-ready .t { font-size: 9px; }
+    .build-ready .timer { font-size: 14px; }
+    #build-readout .status { font-size: 10px; }
+    #build-readout .biomass-line { font-size: 9px; }
     #launch-header { font-size: 8px; margin-bottom: 3px; padding: 0 4px; }
     .caution-frame {
       padding: 4px 8px;
@@ -1299,7 +1423,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.7-α · deepdefense</div>
+        <div id="build-tag">v2.0.8-α · seabase</div>
       </div>
     </main>
 
@@ -1327,6 +1451,27 @@
         <div id="log-header">// COMMS LOG · CASS-3 · ALL ENTRIES UTC</div>
         <div id="log"></div>
       </div>
+      <div id="build-pane">
+        <div id="build-header">
+          <span>// BUILD PHASE</span>
+          <span class="comp-ver">v.1.0</span>
+        </div>
+        <div id="build-console" class="caution-frame build-frame">
+          <div id="build-readout">
+            <div class="status">DEPLOY DEFENSES</div>
+            <div class="biomass-line">BIOMASS <span id="build-biomass">0</span></div>
+          </div>
+          <button id="deploy-drone" class="build-button" type="button">
+            <span class="lbl">DEPLOY DRONE</span>
+            <span class="cost">−<span id="drone-cost">20</span> BIO</span>
+          </button>
+          <button id="build-ready" class="build-ready" type="button">
+            <span class="t">READY</span>
+            <span class="timer" id="build-timer">25</span>
+          </button>
+        </div>
+      </div>
+
       <div id="launch-pane">
         <div id="launch-header">
           <span>// LAUNCH CONTROL</span>
@@ -1393,7 +1538,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.7-alpha"></script>
+  <script type="module" src="./main.js?v=2.0.8-seabase"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
