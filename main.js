@@ -10,10 +10,14 @@ import { WAVES } from './waves.js';
 import {
   clearScope, smearScope, drawScopeChrome, drawSweep, drawBlips,
   drawPendingStrike, drawDetonations, drawCentroidMarker, drawTurretTracers,
+  drawTurretMarker,
   drawGameOverFlash, isInsideScope, drawMissileCam, drawMissileCamFullscreen,
   drawTargetReticle,
 } from './scope.js';
-import { drawBase, drawDrones, tickDrones, seedRipples, initRipplePool, makeDrone, dronePos } from './base.js';
+// Rig view (drawBase + ripples) was retired in v2.1.3. We still pull
+// drone primitives + the ripple pool init from base.js so existing state
+// shape doesn't change; the pool just sits inactive now.
+import { drawDrones, tickDrones, initRipplePool, makeDrone, dronePos } from './base.js';
 import {
   initHUD, updateHUD, setOrdnance, flickerOrdnance, logLine, clearLog,
   fmtTime, fmtBearing, fmtRange,
@@ -43,9 +47,10 @@ const RIG_TURRET_INTERVAL = 0.55;
 const DRONE_TURRET_INTERVAL = 0.95;
 // Engagement ranges. Basic drones are last-line defense — they only see
 // contacts close to the rig (upgrade tiers later may extend this). The rig
-// central auto-turret has full scope range.
+// central auto-turret is now visibly mounted on the radar as a hex marker
+// with a shorter reach so the player can see what it can and can't kill.
 const DRONE_RANGE_BASIC = 130;
-const RIG_RANGE = 320;          // = SCOPE_R; full board
+const RIG_RANGE = 180;          // hex turret range — well inside SCOPE_R (320)
 // Rig-central turret muzzle position — anchored at the amber turret marker
 // on the baked rig sprite (top of rig hex). Imported via const for clarity.
 const RIG_TURRET_OFFSET_Y = -35;     // ≈ RIG_RADIUS * 0.4 (see base.js)
@@ -68,10 +73,7 @@ const buildTimerEl = document.getElementById('build-timer');
 const buildReadyBtn = document.getElementById('build-ready');
 const deployDroneBtn = document.getElementById('deploy-drone');
 // seabase v2 — in-wave rig view + view toggle
-const rigMissileEl = document.getElementById('rig-missile-count');
-const rigBiomassEl = document.getElementById('rig-biomass');
-const viewToggleRig = document.getElementById('view-toggle-rig');     // on rig-pane → switch to radar
-const viewToggleRadar = document.getElementById('view-toggle-radar'); // on launch-pane → switch to rig
+// (rig pane + view-toggle DOM refs removed — rig view retired in v2.1.3)
 
 // Canonical 720-logical-px coordinate space. Backing store = cssSize × dpr.
 // On every resize, ctx.setTransform(dpr * scaleFactor, ...) once — game logic
@@ -258,11 +260,9 @@ function startWave(idx) {
 }
 
 function update(dt, t) {
-  // Drone orbits advance regardless of which view is active so positions
-  // stay consistent during cam takeover.
+  // Drone orbits advance every frame so positions stay consistent during
+  // cam takeover.
   tickDrones(state.drones, dt);
-  // Ripples animate whenever we're showing the sea-base (build phase OR in-wave rig view).
-  if (isRigView()) seedRipples(state, dt, t);
   // Build phase tick — auto-advance after BUILD_PHASE_DURATION
   if (state.phase === 'build_phase') {
     if (t - state.buildPhaseStartedAt >= BUILD_PHASE_DURATION) endBuildPhase();
@@ -495,9 +495,22 @@ function renderRadar(t, dt) {
   smearScope(ctx, 0.22);
   drawScopeChrome(ctx);
   drawSweep(ctx, state.sweep);
+  // Fixed hex turrets on the rig — rig central + sentry (when unlocked).
+  // Drawn under blips/tracers so contacts that pass over them stay legible.
+  const rigFiring = (t - state.turretLastShotAt) < 0.12;
+  drawTurretMarker(ctx, RIG.x, RIG.y + RIG_TURRET_OFFSET_Y, {
+    firing: rigFiring, range: RIG_RANGE,
+  });
+  if (state.unlocks && state.unlocks.sentryTurret) {
+    const sentryFiring = (t - state.sentryTurretLastShotAt) < 0.12;
+    drawTurretMarker(ctx, RIG.x, RIG.y + SENTRY_OFFSET_Y, {
+      firing: sentryFiring, range: RIG_RANGE,
+      tint: '#88ff88', tintRGB: '136, 255, 136',
+    });
+  }
   drawBlips(ctx, state.blips, t);
   // Drones are real allied units on the board — show them on the radar
-  // too, not just rig view, so all three views read the same state.
+  // too, so all views read the same state.
   drawDrones(ctx, state.drones || [], t, dt || 0);
   drawTurretTracers(ctx, state.turretShots, t);
   drawDetonations(ctx, state.detonations, t);
@@ -514,54 +527,24 @@ function renderRadar(t, dt) {
   }
 }
 
-// Render dispatch — three modes during waves:
+// Render dispatch — two modes:
 //   - cam:    main scope is taken over by the missile cam (in-flight + linger)
-//   - rig:    sea-base view; the home during waves
-//   - radar:  PPI scope; opt-in via the toggle to fire missiles
-// Build_phase always uses rig; non-wave phases (intro, endcard, game_over)
-// keep the radar's frozen state behind their overlays.
-function isRigView() {
-  return state.phase === 'build_phase'
-      || (state.phase === 'wave_running' && state.viewMode === 'rig');
-}
+//   - radar:  PPI scope. Default for wave_running, build_phase (frozen),
+//             intro, endcard, game_over (under their overlays).
+// Rig view (sea-base) was removed in v2.1.3 per executive decision.
 function isCamView() {
   return state.phase === 'wave_running'
       && (state.pendingStrikes.length > 0 || state.impactLingers.length > 0);
 }
 let _prevRenderMode = null;
 function render(t, dt) {
-  let mode;
-  if (isCamView()) mode = 'cam';
-  else if (isRigView()) mode = 'rig';
-  else mode = 'radar';
-  // Full-clear on mode switch — renderRadar uses smearScope (partial fade),
-  // so without this the rig water gradient or cam frame would bleed through.
+  const mode = isCamView() ? 'cam' : 'radar';
   if (mode !== _prevRenderMode) {
     clearScope(ctx);
     _prevRenderMode = mode;
   }
   if (mode === 'cam') drawMissileCamFullscreen(ctx, state, t);
-  else if (mode === 'rig') drawBase(ctx, state, t, dt);
   else renderRadar(t, dt);
-}
-
-// View toggle — only meaningful during wave_running. Build_phase always rig;
-// non-wave phases ignore.
-function toggleView() {
-  if (state.phase !== 'wave_running') return;
-  state.viewMode = state.viewMode === 'rig' ? 'radar' : 'rig';
-  // safety always re-engages on view exit so the player must re-arm each visit
-  if (state.viewMode === 'rig') {
-    state.safetyOff = false;
-    state.targetReticle = null;
-  }
-  safetyClick();
-}
-
-// Keep #body class in sync each frame so CSS can swap pane visibility cheaply.
-function syncViewClass() {
-  const inWaveRig = state.phase === 'wave_running' && state.viewMode === 'rig';
-  document.body.classList.toggle('view-rig', inWaveRig);
 }
 
 function frame(nowMs) {
@@ -573,26 +556,13 @@ function frame(nowMs) {
   render(t, dt);
   drawMissileCam(camCtx, state, t);
   camRec.style.visibility = state.pendingStrikes.length ? 'visible' : 'hidden';
-  syncViewClass();
   updateLaunchConsole();
   updateBuildConsole(t);
-  updateRigConsole();
   updateHUD(state);
   requestAnimationFrame(frame);
 }
 
-// Rig pane HUD — missile count + biomass readout. Cheap text writes.
-function updateRigConsole() {
-  if (!rigMissileEl) return;
-  const total = state.readyStrikes + state.reservedStrikes + (state.gauge > 0 ? 0 : 0);
-  if (rigMissileEl.textContent !== String(state.readyStrikes)) {
-    rigMissileEl.textContent = String(state.readyStrikes);
-  }
-  rigMissileEl.classList.toggle('zero', state.readyStrikes <= 0);
-  if (rigBiomassEl && rigBiomassEl.textContent !== String(state.biomass | 0)) {
-    rigBiomassEl.textContent = String(state.biomass | 0);
-  }
-}
+// (updateRigConsole removed — rig pane retired in v2.1.3)
 
 // Build-pane HUD updates — runs every frame, cheap (DOM text writes only).
 function updateBuildConsole(t) {
@@ -773,17 +743,7 @@ buildReadyBtn.addEventListener('pointerdown', (ev) => {
   if (state.phase === 'build_phase') endBuildPhase();
 });
 
-// View toggle — both buttons share the same handler. One lives on the
-// rig-pane (rig→radar), the other on the launch-pane (radar→rig).
-function bindViewToggle(btn) {
-  if (!btn) return;
-  btn.addEventListener('pointerdown', (ev) => {
-    ev.preventDefault(); ev.stopPropagation();
-    toggleView();
-  });
-}
-bindViewToggle(viewToggleRig);
-bindViewToggle(viewToggleRadar);
+// (View-toggle bindings removed — rig view retired in v2.1.3.)
 
 // Codex modal toggle (v2 bestiary).
 const codexBtn = document.getElementById('codex-btn');

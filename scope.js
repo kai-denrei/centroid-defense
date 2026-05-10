@@ -346,6 +346,53 @@ export function drawTurretTracers(ctx, tracers, now) {
   ctx.restore();
 }
 
+// Hexagon turret marker — fixed-position visual for the rig central
+// turret and (when unlocked) the sentry turret, drawn each frame on the
+// radar. `firing` brightens it and pulses the glow when a shot just fired.
+// `range` (optional) draws a faint dashed circle showing engagement reach.
+export function drawTurretMarker(ctx, x, y, opts) {
+  opts = opts || {};
+  const r = opts.r != null ? opts.r : 14;
+  const tint = opts.tint || AMBER;
+  const tintRGB = opts.tintRGB || '255, 170, 68';
+  const firing = !!opts.firing;
+  ctx.save();
+  ctx.translate(x, y);
+  if (opts.range) {
+    ctx.strokeStyle = `rgba(${tintRGB}, 0.18)`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.arc(0, 0, opts.range, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // hex body
+  ctx.fillStyle = `rgba(10, 24, 18, 0.85)`;
+  ctx.strokeStyle = tint;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = tint;
+  ctx.shadowBlur = firing ? 10 : 4;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = i * TAU / 6 - Math.PI / 2;
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // muzzle pip — bright when firing
+  ctx.fillStyle = firing ? '#fff' : tint;
+  ctx.shadowBlur = firing ? 14 : 0;
+  ctx.beginPath();
+  ctx.arc(0, 0, firing ? 3 : 2.4, 0, TAU);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
 // Game-over red wash on the scope.
 export function drawGameOverFlash(ctx, intensity) {
   if (intensity <= 0) return;
