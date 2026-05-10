@@ -1467,6 +1467,86 @@
     }
   }
 
+  /* ── CONTAINMENT PROTOCOL MODAL ──────────────────────────────────────── */
+  #containment-modal { z-index: 80; background: rgba(2, 5, 2, 0.96); }
+  .containment-frame {
+    width: min(960px, 96vw);
+    max-height: 96vh;
+    background: var(--bg-chrome);
+    border: 1px solid var(--p-mid);
+    box-shadow: 0 0 32px rgba(255, 170, 68, 0.20);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px 16px;
+  }
+  .containment-frame header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: var(--amber-dim);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+  }
+  .containment-frame header .ver { color: var(--p-dim); font-size: 9px; }
+  #containment-arena {
+    width: 100%;
+    aspect-ratio: 720 / 400;
+    display: block;
+    background: #0a1820;
+    border: 1px solid rgba(255, 170, 68, 0.35);
+    cursor: crosshair;
+    touch-action: none;
+  }
+  #containment-hud {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 6px 4px 0;
+  }
+  #containment-hud .hud-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 1px solid var(--p-dim);
+    padding: 4px 6px 6px;
+    gap: 2px;
+  }
+  #containment-hud .hud-cell .lbl {
+    color: var(--p-mid);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+  }
+  #containment-hud .hud-cell .num {
+    color: var(--amber);
+    font-size: 18px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+  #containment-msg {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    min-height: 16px;
+    color: var(--p-dim);
+  }
+  #containment-msg.win { color: var(--p-hot); text-shadow: 0 0 6px rgba(136,255,136,0.6); }
+  #containment-msg.loss { color: var(--red); text-shadow: 0 0 6px rgba(255,51,34,0.6); }
+  .containment-frame footer {
+    color: var(--p-dim);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-align: center;
+    margin-top: 4px;
+  }
+  @media (max-width: 899px) {
+    .containment-frame { padding: 8px 8px 10px; gap: 6px; }
+    #containment-hud .hud-cell .num { font-size: 14px; }
+    #containment-hud .hud-cell .lbl { font-size: 8px; }
+    .containment-frame header { font-size: 9px; }
+  }
+
   /* HIDE ROTATE HINT unless mobile + landscape */
   @media (max-width: 899px) and (orientation: landscape) {
     #rotate-hint { display: flex; }
@@ -1478,7 +1558,7 @@
      where the intro is on screen but its pointerdown handler isn't bound
      yet — taps in that window were silently lost ("space/tap to begin
      sometimes fails on reload"). -->
-<link rel="modulepreload" href="./main.js?v=2.0.18-seabase">
+<link rel="modulepreload" href="./main.js?v=2.1.0-containment">
 <script>
   // Pre-init dismissal capture. Runs synchronously during HTML parse,
   // long before main.js evaluates, so any tap or [SPACE] the user does
@@ -1553,7 +1633,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.0.18-α · seabase</div>
+        <div id="build-tag">v2.1.0-α · containment</div>
       </div>
     </main>
 
@@ -1683,6 +1763,27 @@
         </div>
       </div>
     </div>
+
+    <!-- Containment Protocol mini-game (M0). Opens between waves 3/8/15.
+         Player launches drones from arena edges to encircle the creature
+         until its accessible area falls below 22% (or its energy hits 0). -->
+    <div id="containment-modal" class="modal hide">
+      <div class="containment-frame">
+        <header>
+          <span>// CONTAINMENT PROTOCOL · <span id="containment-creature">BLOOMJELLY</span></span>
+          <span class="ver">v.0.1</span>
+        </header>
+        <canvas id="containment-arena" width="720" height="400"></canvas>
+        <div id="containment-hud">
+          <div class="hud-cell"><span class="lbl">DRONES</span><span class="num" id="cm-drones">10</span></div>
+          <div class="hud-cell"><span class="lbl">AREA</span><span class="num"><span id="cm-area">100</span>%</span></div>
+          <div class="hud-cell"><span class="lbl">ENERGY</span><span class="num" id="cm-energy">100</span></div>
+          <div class="hud-cell"><span class="lbl">TIME</span><span class="num" id="cm-time">90</span></div>
+        </div>
+        <div id="containment-msg" class="msg"></div>
+        <footer>TAP THE ARENA TO LAUNCH A DRONE FROM THE NEAREST EDGE · ENCLOSE THE CREATURE</footer>
+      </div>
+    </div>
   </div>
 
   <div id="rotate-hint">
@@ -1691,7 +1792,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.0.18-seabase"></script>
+  <script type="module" src="./main.js?v=2.1.0-containment"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier

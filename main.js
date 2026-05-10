@@ -26,6 +26,7 @@ import {
   strikeWhoosh, detonation, gameOverTone, runCompleteChime, armedChime,
   safetyClick, targetLock, launchPress,
 } from './audio.js';
+import { openContainment, isContainmentActive } from './containment.js';
 
 const TAU = Math.PI * 2;
 const SWEEP_PERIOD = 3.0;
@@ -153,7 +154,18 @@ const state = {
   runStats: { totalStrikes: 0, wavesCleared: 0, waves: [] },
   runStartTime: 0,
   gameOverFlashUntil: 0,
+  // Containment Protocol — gates after waves 3, 8, 15. Per-wave attempt
+  // tracking (Set), pending retry flag for the next wave's endcard, and
+  // unlock map for defense structures granted by passing the gate.
+  containmentDone: new Set(),     // round indices already CLEARED
+  containmentPendingRetry: false, // last attempt failed → retry after next wave_endcard
+  unlocks: { sentryTurret: false },
+  sentryTurretLastShotAt: 0,
 };
+const CONTAINMENT_GATES = [3, 8, 15];
+// Sentry turret muzzle anchored at the south side of the rig, mirror of
+// the rig central turret marker (which sits at -RIG_TURRET_OFFSET_Y north).
+const SENTRY_OFFSET_Y = 35;
 
 let lastFrameMs = performance.now();
 
@@ -172,6 +184,11 @@ function startRun() {
   state.drones = [makeDrone(now()), makeDrone(now())];
   // mark all ripples inactive (the pool persists across runs)
   for (const r of state.ripples) r.alive = false;
+  // Reset containment progression each new run.
+  state.containmentDone = new Set();
+  state.containmentPendingRetry = false;
+  state.unlocks = { sentryTurret: false };
+  state.sentryTurretLastShotAt = 0;
   clearLog();
   startWave(1);
 }
@@ -315,6 +332,13 @@ function update(dt, t) {
   if (t - state.turretLastShotAt >= RIG_TURRET_INTERVAL) {
     if (firePointDefense(t, RIG.x, RIG.y + RIG_TURRET_OFFSET_Y, 'rig', null, RIG_RANGE)) {
       state.turretLastShotAt = t;
+    }
+  }
+  // Sentry turret — unlocked by clearing the first containment gate. Same
+  // interval + range as the rig central turret, mounted on the south side.
+  if (state.unlocks.sentryTurret && t - state.sentryTurretLastShotAt >= RIG_TURRET_INTERVAL) {
+    if (firePointDefense(t, RIG.x, RIG.y + SENTRY_OFFSET_Y, 'sentry', null, RIG_RANGE)) {
+      state.sentryTurretLastShotAt = t;
     }
   }
   for (const d of state.drones) {
@@ -796,13 +820,67 @@ window.addEventListener('keydown', (ev) => {
 function advanceFromPrompt() {
   if (state.phase === 'intro') { hideIntro(); startRun(); }
   else if (state.phase === 'wave_endcard') {
-    // After every wave except the final, transition through build phase.
-    // Game-over and run-complete bypass build phase via their own paths.
     hideEndcard();
+    // Containment gate: triggers after waves 3/8/15 if not yet cleared, OR
+    // if a prior gate failed and is retrying after this wave's clear.
+    if (containmentDueNow()) {
+      startContainment();
+      return;
+    }
     startBuildPhase();
   }
   else if (state.phase === 'build_phase') { endBuildPhase(); }
   else if (state.phase === 'run_complete' || state.phase === 'game_over') { hideEndcard(); startRun(); }
+}
+
+// Decide whether to inject the containment mini-game right now. A gate is
+// "due" if (a) the just-cleared wave matches a CONTAINMENT_GATES entry and
+// it hasn't been passed yet, OR (b) a previous gate is pending retry and
+// we just cleared the wave that follows it (per Gerald's spec: fail at
+// wave 3 → retry after wave 4 endcard).
+function containmentDueNow() {
+  const w = state.wave;
+  if (state.containmentPendingRetry) return true;
+  return CONTAINMENT_GATES.includes(w) && !state.containmentDone.has(w);
+}
+
+function startContainment() {
+  state.phase = 'containment';
+  const round = state.containmentPendingRetry ? findPriorGate(state.wave) : state.wave;
+  logT(`CONTAINMENT PROTOCOL — INITIATED (ROUND ${round})`, { crit: true });
+  openContainment({
+    round,
+    creatureSlug: 'bloomjelly',
+    onResult: (res) => onContainmentResult(round, res),
+  });
+}
+
+function findPriorGate(currentWave) {
+  // The gate that's pending retry is the largest CONTAINMENT_GATES entry
+  // strictly less than the current wave.
+  for (let i = CONTAINMENT_GATES.length - 1; i >= 0; i--) {
+    if (CONTAINMENT_GATES[i] < currentWave) return CONTAINMENT_GATES[i];
+  }
+  return currentWave;
+}
+
+function onContainmentResult(round, res) {
+  if (res.outcome === 'win') {
+    state.containmentDone.add(round);
+    state.containmentPendingRetry = false;
+    // First win unlocks the sentry turret — second fixed turret on rig.
+    if (!state.unlocks.sentryTurret) {
+      state.unlocks.sentryTurret = true;
+      logT(`UNLOCK — SENTRY TURRET ONLINE`, { crit: true });
+    } else {
+      logT(`CONTAINMENT CLEARED — ROUND ${round}`);
+    }
+  } else {
+    state.containmentPendingRetry = true;
+    logT(`CONTAINMENT FAILED — RETRY OFFERED AFTER WAVE ${state.wave + 1}`, { crit: true });
+  }
+  // Either outcome: continue to build phase, then next wave.
+  startBuildPhase();
 }
 
 // BOOT
