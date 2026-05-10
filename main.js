@@ -260,9 +260,9 @@ function startWave(idx) {
 }
 
 function update(dt, t) {
-  // Drone orbits advance every frame so positions stay consistent during
-  // cam takeover.
-  tickDrones(state.drones, dt);
+  // Drones patrol their orbit, but hold station the moment a contact
+  // enters their range — visible point-defense lock-on.
+  tickDrones(state.drones, dt, { contacts: state.contacts, range: DRONE_RANGE_BASIC });
   // Build phase tick — auto-advance after BUILD_PHASE_DURATION
   if (state.phase === 'build_phase') {
     if (t - state.buildPhaseStartedAt >= BUILD_PHASE_DURATION) endBuildPhase();

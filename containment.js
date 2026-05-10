@@ -24,6 +24,8 @@ const CFG = {
     slowNetHp: 95,            // strong net (held to charge cap)
     chargeMs: 1200,           // hold duration to reach fully slow/strong
     radius: 7,                // visual marker radius
+    deathRadius: 18,          // distance at which a creature touch destroys the drone
+    respawnMs: 1100,          // dead → patrol respawn delay
   },
   creature: {
     startEnergy: 100,
@@ -125,10 +127,14 @@ function makeState(round, creatureSlug) {
       vx: 0, vy: 0,
       energy: CFG.creature.startEnergy,
       lastRamAt: 0,
+      // Organic-motion state machine: 'cruise' | 'burst' | 'rest'
+      motionMode: 'cruise',
+      modeUntil: 0,
+      burstAngle: 0,
     },
     lines: [],                // [{ ax, ay, bx, by, hp, hpMax, broken }]
     drone: {
-      mode: 'patrol',         // 'patrol' | 'charging' | 'drawing'
+      mode: 'patrol',         // 'patrol' | 'charging' | 'drawing' | 'dead'
       x: CFG.arena.w / 2, y: 0,
       edgePos: CFG.arena.w / 2,    // start at top-middle so first frame reads naturally
       // 'drawing'/'charging' state
@@ -136,7 +142,9 @@ function makeState(round, creatureSlug) {
       targetX: 0, targetY: 0, // where the drone is heading
       speed: 0, netHp: 0,     // committed once 'drawing' starts
       chargeStartedAt: 0,
+      respawnAt: 0,           // when 'dead', timestamp at which we respawn
     },
+    deathFlashes: [],         // [{ x, y, t0 }] — brief expanding ring at death sites
     pointerDown: false,
     dronePool: CFG.drone.pool,
     dronesUsed: 0,
@@ -164,14 +172,43 @@ function loop(nowMs) {
 
 // ─── Update ──────────────────────────────────────────────────────────────
 function update(dt, t) {
-  // Creature drift + ramming (unchanged from prior version) ────────────
+  // Creature motion — organic three-state machine ──────────────────────
+  // cruise: brownian drift toward base speed (most of the time)
+  // burst:  brief acceleration to ~3.5x drift in a random direction
+  // rest:   decelerate to near-zero, hold for a beat
+  // Mode transitions are weighted random; durations vary so the
+  // creature reads "alive" (stops, accelerates, changes its mind).
   const c = state.creature;
   const cfg = CFG.creature;
-  c.vx += (Math.random() - 0.5) * cfg.jitter * 80 * dt;
-  c.vy += (Math.random() - 0.5) * cfg.jitter * 80 * dt;
-  const speed = Math.hypot(c.vx, c.vy) || 1;
-  c.vx *= cfg.drift / Math.max(speed, cfg.drift * 0.2);
-  c.vy *= cfg.drift / Math.max(speed, cfg.drift * 0.2);
+  if (t > c.modeUntil) {
+    const r = Math.random();
+    if (r < 0.55) {
+      c.motionMode = 'cruise';
+      c.modeUntil = t + 1.2 + Math.random() * 2.2;
+    } else if (r < 0.80) {
+      c.motionMode = 'burst';
+      c.modeUntil = t + 0.30 + Math.random() * 0.5;
+      c.burstAngle = Math.random() * Math.PI * 2;
+    } else {
+      c.motionMode = 'rest';
+      c.modeUntil = t + 0.40 + Math.random() * 0.9;
+    }
+  }
+  if (c.motionMode === 'cruise') {
+    c.vx += (Math.random() - 0.5) * 140 * dt;
+    c.vy += (Math.random() - 0.5) * 140 * dt;
+    const sp = Math.hypot(c.vx, c.vy) || 1;
+    if (sp > cfg.drift) { c.vx *= cfg.drift / sp; c.vy *= cfg.drift / sp; }
+  } else if (c.motionMode === 'burst') {
+    const burstSpeed = cfg.drift * 3.5;
+    c.vx += Math.cos(c.burstAngle) * 720 * dt;
+    c.vy += Math.sin(c.burstAngle) * 720 * dt;
+    const sp = Math.hypot(c.vx, c.vy);
+    if (sp > burstSpeed) { c.vx *= burstSpeed / sp; c.vy *= burstSpeed / sp; }
+  } else { // rest
+    const damp = Math.pow(0.04, dt);
+    c.vx *= damp; c.vy *= damp;
+  }
   let nx = c.x + c.vx * dt;
   let ny = c.y + c.vy * dt;
   if (nx < cfg.radius) { nx = cfg.radius; c.vx = Math.abs(c.vx); }
@@ -206,15 +243,12 @@ function update(dt, t) {
     const p = edgePosToXY(d.edgePos);
     d.x = p.x; d.y = p.y;
   } else if (d.mode === 'charging') {
-    // Drone hovers at trail start, charging up. Live-update target as the
-    // pointer drags.  No movement yet — release commits.
     d.x = d.trailX; d.y = d.trailY;
   } else if (d.mode === 'drawing') {
     const remX = d.targetX - d.x, remY = d.targetY - d.y;
     const remDist = Math.hypot(remX, remY);
     const step = d.speed * dt;
     if (remDist <= step || remDist < 1) {
-      // Reached target — finalize the line + return to patrol
       finalizeLine(d.trailX, d.trailY, d.x, d.y, d.netHp);
       const e = nearestEdgePos(d.x, d.y);
       d.edgePos = e;
@@ -224,18 +258,31 @@ function update(dt, t) {
     } else {
       d.x += (remX / remDist) * step;
       d.y += (remY / remDist) * step;
-      // Creature collision in flight: drone destroyed, line not laid
-      if (Math.hypot(c.x - d.x, c.y - d.y) < cfg.ramRadius) {
-        // teleport drone back to nearest edge — no line drawn, pool already
-        // decremented (the launch is the cost regardless of outcome)
-        const e = nearestEdgePos(d.x, d.y);
-        d.edgePos = e;
-        const ep = edgePosToXY(e);
-        d.x = ep.x; d.y = ep.y;
-        d.mode = 'patrol';
-      }
+    }
+  } else if (d.mode === 'dead') {
+    if (t >= d.respawnAt) {
+      // respawn at a random edge so the player can't camp the drone
+      d.edgePos = Math.random() * arenaPerimeter();
+      const p = edgePosToXY(d.edgePos);
+      d.x = p.x; d.y = p.y;
+      d.mode = 'patrol';
+      d.facing = null;
     }
   }
+
+  // Creature-touches-drone → drone dies in any mode (patrol, charging,
+  // drawing). In-progress line is forfeited; pool decrement already
+  // happened at launch in 'drawing' mode, so dying mid-flight wastes
+  // that drone use. Patrol/charging deaths don't cost pool.
+  if (d.mode !== 'dead' &&
+      Math.hypot(c.x - d.x, c.y - d.y) < CFG.drone.deathRadius) {
+    state.deathFlashes.push({ x: d.x, y: d.y, t0: t });
+    d.mode = 'dead';
+    d.respawnAt = t + CFG.drone.respawnMs / 1000;
+    if (state.pointerDown) state.pointerDown = false;   // cancel any hold
+  }
+  // Prune old death flashes
+  state.deathFlashes = state.deathFlashes.filter(f => t - f.t0 < 0.7);
 
   // Energy drain ───────────────────────────────────────────────────────
   c.energy = Math.max(0, c.energy - drainForArea(state.accessiblePct) * dt);
@@ -299,7 +346,7 @@ function onPointerDown(ev) {
   }
   if (state.dronePool <= 0) return;
   const d = state.drone;
-  if (d.mode !== 'patrol') return;       // mid-action; ignore taps
+  if (d.mode !== 'patrol') return;       // mid-action OR dead — ignore taps
   const { x, y } = pointerCoords(ev);
   state.pointerDown = true;
   d.mode = 'charging';
@@ -506,7 +553,32 @@ function render(t) {
 }
 
 function drawDrone(t) {
+  // Death flashes — expanding red ring + fade. Drawn even when drone is
+  // dead so the player sees what just happened.
+  if (state.deathFlashes && state.deathFlashes.length) {
+    for (const f of state.deathFlashes) {
+      const age = t - f.t0;
+      const tProg = Math.min(1, age / 0.7);
+      const fade = 1 - tProg;
+      ctx.strokeStyle = `rgba(255, 51, 34, ${(fade * 0.85).toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = RED;
+      ctx.shadowBlur = 10 * fade;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 6 + tProg * 28, 0, TAU);
+      ctx.stroke();
+      // bright core that shrinks
+      ctx.fillStyle = `rgba(255, 245, 200, ${(fade * 0.9).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, fade * 5, 0, TAU);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
   const d = state.drone;
+  if (d.mode === 'dead') return;        // drone is gone until respawn
+
   // trail (drawing or charging preview)
   if (d.mode === 'drawing') {
     ctx.strokeStyle = `rgba(255, 245, 200, 0.85)`;

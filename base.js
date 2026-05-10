@@ -301,11 +301,33 @@ function drawDroneTracers(ctx, drones, turretShots, ripples, t) {
 }
 
 // Tick all drone orbits forward by dt. Called from update() so drone
-// positions advance even when their view (rig/radar) isn't the active
-// render path — keeps the missile-cam takeover from freezing the orbit.
-export function tickDrones(drones, dt) {
+// positions advance even during the missile-cam takeover.
+//
+// If `opts.contacts` + `opts.range` are passed, each drone holds station
+// while at least one alive contact is within range. The drone reads as
+// "engaged" — sets d.engaged = true and skips its angle advance — so the
+// player can see point-defense visibly locking on rather than drifting
+// past targets. When the contact dies or escapes range, the drone
+// resumes orbital patrol.
+export function tickDrones(drones, dt, opts) {
   if (!drones) return;
-  for (const d of drones) d.angle = (d.angle + d.angularSpeed * dt) % TAU;
+  const contacts = opts && opts.contacts;
+  const range = (opts && opts.range) || 0;
+  const r2 = range * range;
+  for (const d of drones) {
+    let engaged = false;
+    if (contacts && range > 0) {
+      const px = RIG.x + Math.cos(d.angle) * d.orbitRadius;
+      const py = RIG.y + Math.sin(d.angle) * d.orbitRadius;
+      for (const c of contacts) {
+        if (!c.alive) continue;
+        const dx = c.x - px, dy = c.y - py;
+        if (dx * dx + dy * dy <= r2) { engaged = true; break; }
+      }
+    }
+    d.engaged = engaged;
+    if (!engaged) d.angle = (d.angle + d.angularSpeed * dt) % TAU;
+  }
 }
 
 export function drawDrones(ctx, drones, t, dt) {
@@ -315,23 +337,21 @@ export function drawDrones(ctx, drones, t, dt) {
   for (const d of drones) {
     const x = Math.cos(d.angle) * d.orbitRadius;
     const y = Math.sin(d.angle) * d.orbitRadius;
-    // If the drone has engaged a contact recently, point at it (so the
-    // body visibly turns to track underwater targets); otherwise default
-    // to orbit-tangent so it reads as a patrolling unit.
-    const engaged = d.facing != null && d.lastShotAt && (t - d.lastShotAt < 1.5);
+    // Engaged = currently has a target in range (tickDrones sets the flag).
+    // The drone holds station; the chevron rotates to face the target.
+    const engaged = !!d.engaged;
     const tangent = d.angle + Math.PI / 2;
-    // chevron heading: when engaged, +PI/2 because the chevron points "up"
-    // along its local Y axis; we convert facing-angle (atan2 dy,dx) to that
-    // local frame.
-    const heading = engaged ? (d.facing + Math.PI / 2) : tangent;
+    const heading = (engaged && d.facing != null) ? (d.facing + Math.PI / 2) : tangent;
     // chevron: 3 short lines forming a triangle pointing along heading
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(heading);
-    ctx.strokeStyle = PHOSPHOR_HOT;
-    ctx.lineWidth = 1.4;
-    ctx.shadowColor = PHOSPHOR_HOT;
-    ctx.shadowBlur = 4;
+    // Engaged drones glow amber and pulse — clear visual readout of lock-on.
+    const pulse = engaged ? (0.65 + 0.35 * Math.sin(t * 8)) : 1;
+    ctx.strokeStyle = engaged ? AMBER : PHOSPHOR_HOT;
+    ctx.lineWidth = engaged ? 1.6 : 1.4;
+    ctx.shadowColor = engaged ? AMBER : PHOSPHOR_HOT;
+    ctx.shadowBlur = engaged ? 8 * pulse : 4;
     ctx.beginPath();
     ctx.moveTo(0, -5);
     ctx.lineTo(-4, 4);
