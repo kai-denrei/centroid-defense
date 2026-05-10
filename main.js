@@ -141,9 +141,10 @@ const state = {
   buildPhaseStartedAt: 0,
   drones: [],                      // persists across waves within a run
   ripples: initRipplePool(),       // pool of 32, all start inactive
-  // seabase v2 — rig view is home during waves; player toggles to radar to fire.
-  // After every detonation, viewMode auto-reverts to 'rig'.
-  viewMode: 'rig',                 // 'rig' | 'radar' (only meaningful when wave_running)
+  // Rig view disabled for now (containment v2.1) — radar is the home view
+  // during waves. Build_phase still uses the sea-base render for drone
+  // purchase context.
+  viewMode: 'radar',               // 'rig' | 'radar' (rig disabled in-wave)
   contacts: [], blips: [],
   detonations: [], turretShots: [],
   centroidMarker: null,
@@ -162,7 +163,9 @@ const state = {
   unlocks: { sentryTurret: false },
   sentryTurretLastShotAt: 0,
 };
-const CONTAINMENT_GATES = [3, 8, 15];
+// Containment gates. Production target: [3, 8, 15]. Currently set to
+// trigger after EVERY wave so the loop is easy to troubleshoot.
+const CONTAINMENT_GATES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 // Sentry turret muzzle anchored at the south side of the rig, mirror of
 // the rig central turret marker (which sits at -RIG_TURRET_OFFSET_Y north).
 const SENTRY_OFFSET_Y = 35;
@@ -239,7 +242,7 @@ function startWave(idx) {
     biomassThisWave: 0,
     spawnQueue: w.spawns.map(s => ({ t: s.t, spec: s, fired: false })),
     phase: 'wave_running',
-    viewMode: 'rig',                  // every wave begins on the rig — toggle to radar to engage
+    viewMode: 'radar',                // rig view disabled for now — radar is the home
   });
   setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
   hideEndcard();
@@ -432,8 +435,7 @@ function detonate(strike, t) {
       logT(`DRONE LOSS — ${lost} ASSET${lost > 1 ? 'S' : ''} CAUGHT IN FRIENDLY BLAST`, { crit: true });
     }
   }
-  // Auto-revert to rig view after every detonation (seabase v2 design).
-  if (state.phase === 'wave_running') state.viewMode = 'rig';
+  // (Auto-revert to rig view removed — rig view disabled v2.1.)
 }
 
 function triggerGameOver(t) {

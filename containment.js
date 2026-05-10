@@ -128,6 +128,8 @@ function makeState(round, creatureSlug) {
     accessiblePct: 100,
     settled: false,
     outcome: null,
+    // 'tutorial' → 'play' → 'settled'.  Tutorial is dismissed on first tap.
+    uiMode: 'tutorial',
   };
 }
 
@@ -137,7 +139,7 @@ function loop(nowMs) {
   const t = nowMs / 1000;
   const dt = Math.min(0.05, t - state.lastT);
   state.lastT = t;
-  if (!state.settled) {
+  if (state.uiMode === 'play' && !state.settled) {
     update(dt, t);
     if (!state.settled) checkOutcome(t);
   }
@@ -264,6 +266,15 @@ function finish(outcome, reason) {
 function onPointerDown(ev) {
   ev.preventDefault();
   if (!state) return;
+  // Tutorial dismiss → start the run timer fresh so the 90s clock reflects
+  // gameplay only, not how long the player read the briefing.
+  if (state.uiMode === 'tutorial') {
+    state.uiMode = 'play';
+    const t = performance.now() / 1000;
+    state.startedAt = t;
+    state.lastT = t;
+    return;
+  }
   if (state.settled) {
     close();
     onResultFn({
@@ -467,4 +478,53 @@ function render(t) {
     ctx.fillText(isWin ? 'CONTAINED' : 'BREACHED', W / 2, H / 2);
     ctx.shadowBlur = 0;
   }
+
+  // tutorial briefing overlay — dismissed on first tap
+  if (state.uiMode === 'tutorial') drawTutorial(t);
+}
+
+function drawTutorial(t) {
+  const W = CFG.arena.w, H = CFG.arena.h;
+  ctx.fillStyle = 'rgba(2, 5, 2, 0.88)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Title
+  ctx.shadowColor = HOT; ctx.shadowBlur = 12;
+  ctx.fillStyle = HOT;
+  ctx.font = '900 26px JetBrains Mono, ui-monospace, monospace';
+  ctx.fillText('CONTAINMENT PROTOCOL', W / 2, 56);
+  // Subtitle — creature
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = AMBER;
+  ctx.font = '700 13px JetBrains Mono, ui-monospace, monospace';
+  ctx.fillText(`TARGET · ${state.creatureSlug.toUpperCase()}  ·  TIER 1 · SOFT CONTACT`, W / 2, 84);
+  ctx.shadowBlur = 0;
+  // Briefing lines
+  const lines = [
+    'TAP THE ARENA — A DRONE LAUNCHES FROM THE NEAREST EDGE',
+    'AND DRAWS A NET WALL TO YOUR TAP POINT.',
+    '',
+    'WALLS BLOCK THE CREATURE; IT WILL RAM TO BREAK THEM',
+    '(25 DAMAGE / 1.2s · NET HP 60).',
+    '',
+    'WIN — REDUCE ITS ACCESSIBLE AREA TO ≤ 22%, OR DRAIN',
+    'ITS ENERGY TO ZERO (DRAIN ACCELERATES AS AREA SHRINKS).',
+    '',
+    'LOSE — RUN OUT OF DRONES (10) OR EXCEED THE 90s CLOCK.',
+  ];
+  ctx.font = '500 12px JetBrains Mono, ui-monospace, monospace';
+  ctx.fillStyle = MID;
+  let y = 130;
+  for (const line of lines) {
+    if (line) ctx.fillText(line, W / 2, y);
+    y += 18;
+  }
+  // Pulse prompt at bottom
+  const pulse = 0.55 + 0.45 * Math.sin(t * 3);
+  ctx.font = '700 14px JetBrains Mono, ui-monospace, monospace';
+  ctx.fillStyle = `rgba(255, 170, 68, ${pulse.toFixed(3)})`;
+  ctx.shadowColor = AMBER; ctx.shadowBlur = 8;
+  ctx.fillText('[ TAP TO BEGIN ]', W / 2, H - 38);
+  ctx.shadowBlur = 0;
 }

@@ -1467,6 +1467,10 @@
     }
   }
 
+  /* RIG view disabled v2.1 — hide both view-toggle buttons. The wave
+     renders on the radar; build_phase still uses the sea-base view for
+     drone purchase context (no toggle needed there either). */
+  #view-toggle-rig, #view-toggle-radar { display: none !important; }
   /* ── CONTAINMENT PROTOCOL MODAL ──────────────────────────────────────── */
   #containment-modal { z-index: 80; background: rgba(2, 5, 2, 0.96); }
   .containment-frame {
@@ -1558,7 +1562,7 @@
      where the intro is on screen but its pointerdown handler isn't bound
      yet — taps in that window were silently lost ("space/tap to begin
      sometimes fails on reload"). -->
-<link rel="modulepreload" href="./main.js?v=2.1.0-containment">
+<link rel="modulepreload" href="./main.js?v=2.1.1-containment">
 <script>
   // Pre-init dismissal capture. Runs synchronously during HTML parse,
   // long before main.js evaluates, so any tap or [SPACE] the user does
@@ -1633,7 +1637,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.1.0-α · containment</div>
+        <div id="build-tag">v2.1.1-α · containment</div>
       </div>
     </main>
 
@@ -1792,7 +1796,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.1.0-containment"></script>
+  <script type="module" src="./main.js?v=2.1.1-containment"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier
