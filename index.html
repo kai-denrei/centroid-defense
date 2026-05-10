@@ -25,6 +25,12 @@
     --bg: #050a05;
     --bg-chrome: #0a120a;
     --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    /* iOS safe-area insets exposed as CSS vars so JS can read them via
+       getComputedStyle. env() does not flow into JS directly. */
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -912,7 +918,209 @@
     border-color: var(--amber);
   }
 
-  /* tab strip — 5 category tabs at the top of the modal body */
+  /* SCIENCE LOG top-level tabs (BESTIARY | STUDIES). Sit above the
+     creature-category sub-strip. */
+  #science-tabs {
+    display: flex;
+    height: 36px;
+    border-bottom: 1px solid var(--amber-dim);
+    padding: 0 14px;
+    gap: 4px;
+    flex-shrink: 0;
+    background: rgba(255, 170, 68, 0.04);
+  }
+  .science-tab {
+    flex: 0 0 auto;
+    min-width: 110px;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--p-mid);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    padding: 9px 16px 7px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: color 200ms, border-color 200ms, background 200ms;
+  }
+  .science-tab:hover { color: var(--amber); background: rgba(255, 170, 68, 0.06); }
+  .science-tab.active {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+    text-shadow: 0 0 6px rgba(255, 170, 68, 0.4);
+  }
+  .science-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;          /* let the flex child scroll instead of the modal */
+  }
+  .science-pane.hide { display: none; }
+
+  /* STUDIES pane — scrollable container; the study viewer renders inside. */
+  #studies-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px 18px;
+    color: var(--p-mid);
+    font-size: 11px;
+    line-height: 1.55;
+    letter-spacing: 0.04em;
+  }
+  .studies-empty {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--p-dim);
+    letter-spacing: 0.18em;
+    font-size: 11px;
+  }
+  .studies-empty-sub {
+    display: block;
+    margin-top: 8px;
+    color: var(--amber-dim);
+    font-size: 9px;
+  }
+
+  /* Study viewer — viz on top, plate, prose, sample logs below. */
+  .study-viewer { display: flex; flex-direction: column; gap: 14px; }
+  .study-head {
+    border-left: 2px solid var(--amber);
+    padding: 4px 12px;
+  }
+  .study-num {
+    color: var(--amber-dim);
+    font-size: 9px;
+    letter-spacing: 0.30em;
+  }
+  .study-title {
+    color: var(--amber);
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    margin-top: 2px;
+  }
+  .study-sub {
+    color: var(--p-mid);
+    font-size: 10px;
+    letter-spacing: 0.20em;
+    margin-top: 3px;
+  }
+  .study-viz-mount {
+    width: 100%;
+    border: 1px solid var(--amber-dim);
+    background: #000;
+    /* min-height keeps the layout stable before rAF first paint */
+    min-height: 220px;
+  }
+  .study-viz-canvas { display: block; }
+  .study-plate {
+    color: var(--p-hot);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-align: center;
+    padding: 4px 8px;
+    border: 1px dashed var(--amber-dim);
+    background: rgba(255, 170, 68, 0.04);
+  }
+  .study-lore p {
+    margin: 0 0 10px;
+    color: var(--p-mid);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .study-lore p:last-child { margin-bottom: 0; }
+  .study-lore strong { color: var(--amber); font-weight: normal; letter-spacing: 0.04em; }
+  .study-lore em { color: var(--p-hot); font-style: normal; }
+  .study-lore .mono { font-family: var(--mono); color: var(--amber); }
+  .study-logs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .study-log {
+    border: 1px solid var(--p-dim);
+    background: rgba(15, 44, 15, 0.30);
+    padding: 8px 12px;
+  }
+  .study-log-title {
+    color: var(--amber-dim);
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    margin-bottom: 6px;
+  }
+  .study-log-body {
+    margin: 0;
+    color: var(--p-hot);
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.55;
+    letter-spacing: 0.02em;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* GARDENER intro overlay — full-screen, sits above everything. Same
+     study-viewer layout body, with a PROCEED button at the bottom. */
+  #gardener-intro-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(2, 5, 2, 0.96);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #gardener-intro-modal.open { display: flex; }
+  .gardener-intro-card {
+    width: min(720px, 100%);
+    max-height: calc(100vh - 40px);
+    background: var(--bg-chrome);
+    border: 1px solid var(--amber);
+    box-shadow: 0 0 30px rgba(255, 170, 68, 0.20);
+    display: flex;
+    flex-direction: column;
+  }
+  .gardener-intro-banner {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--amber-dim);
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-align: center;
+    background: rgba(255, 170, 68, 0.06);
+  }
+  .gardener-intro-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+  }
+  .gardener-intro-actions {
+    padding: 10px 14px;
+    border-top: 1px solid var(--amber-dim);
+    text-align: center;
+    background: rgba(255, 170, 68, 0.04);
+  }
+  .gardener-intro-proceed {
+    background: transparent;
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    padding: 10px 24px;
+    cursor: pointer;
+    transition: background 200ms, color 200ms, box-shadow 200ms;
+  }
+  .gardener-intro-proceed:hover {
+    background: rgba(255, 170, 68, 0.12);
+    box-shadow: 0 0 14px rgba(255, 170, 68, 0.30);
+  }
+
+  /* sub-strip — 5 creature-category tabs (lives inside BESTIARY pane) */
   #codex-tabs {
     display: flex;
     height: 32px;
@@ -1195,18 +1403,28 @@
       grid-template-rows:
         calc(40px + env(safe-area-inset-top))
         var(--scope-css-px, 360px)
-        auto;
+        1fr;
     }
-    /* TOP BAR — compressed */
+    /* TOP BAR — compressed; interior content sits BELOW the iOS status bar
+       (apple-mobile-web-app-status-bar-style is black-translucent, so the OS
+       overlays the top inset; safe-area-inset-top is non-zero on notched
+       devices). Without this padding the rig info renders behind the
+       signal/wifi/battery glyphs. */
     #topbar {
       grid-column: 1;
       grid-row: 1;
-      padding: 0 10px;
+      padding-left: max(10px, env(safe-area-inset-left));
+      padding-right: max(10px, env(safe-area-inset-right));
       align-items: flex-start;
-      padding-top: 7px;
+      padding-top: calc(env(safe-area-inset-top) + 8px);
     }
     #topbar .designation { font-size: 11px; letter-spacing: 0.16em; }
     #topbar .center-readout { font-size: 11px; letter-spacing: 0.10em; }
+    /* keep ORD status anchored right and bounded — prevents the STANDBY/ARMED
+       string from drifting under the OS battery glyph if the topbar ever
+       reflows */
+    #topbar #ord-bay { max-width: 96px; align-items: flex-end; }
+    #topbar #ord-status { white-space: nowrap; text-align: right; }
     #topbar .designation .full,
     #topbar .center-readout .full { display: none; }
     #topbar .designation .short,
@@ -1275,34 +1493,47 @@
     /* RIGHT RAIL — dropped on mobile */
     #rightrail { display: none; }
     /* BOTTOMBAR — comms strip + cam strip stacked vertically.
-       The cam strip is a flex sibling of comms, sized via JS-set --cam-h
-       (0 when no strike pending, 68px when one is in flight). */
+       Lives in a 1fr grid row that absorbs all remaining viewport height
+       below the scope. align-self:end anchors the controls to the bottom of
+       that row so they sit near the user's thumb on portrait phones; the
+       empty space ends up between the scope and the controls (natural for
+       iOS-style bottom-anchored UIs). padding-bottom respects the home
+       indicator on iPhones with no physical home button. */
     #bottombar {
       grid-column: 1;
       grid-row: 3;
       flex-direction: column;
       gap: 0;
       padding: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
       align-items: stretch;
+      align-self: end;
+      width: 100dvw;
     }
+    /* Comms log gets two lines on tall portrait phones — uses some of the
+       previously-wasted bottom space and gives the player one line of
+       context behind the latest event. */
     #comms-pane {
-      flex: 0 0 28px;
+      flex: 0 0 44px;
       padding: 4px 10px 0 10px;
+      overflow: hidden;
     }
     #log-header { display: none; }
     #log {
       font-size: 10px;
-      line-height: 1.3;
+      line-height: 1.35;
       letter-spacing: 0.04em;
     }
-    /* Mobile: only the newest line, single-line with ellipsis. The 28-px
-       strip can't accommodate wrapping. */
-    #log .line:not(:last-child) { display: none; }
+    /* Mobile: show the two most-recent lines (newest brightest via .fresh).
+       Older lines hidden — the strip can fit two single-line entries. */
     #log .line {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    #log .line:nth-last-child(n+3) { display: none; }
     /* LAUNCH/BUILD CONSOLES on mobile — full-width strip between comms and cam */
     #launch-pane, #build-pane {
       flex: 0 0 86px;
@@ -1466,7 +1697,7 @@
      where the intro is on screen but its pointerdown handler isn't bound
      yet — taps in that window were silently lost ("space/tap to begin
      sometimes fails on reload"). -->
-<link rel="modulepreload" href="./main.js?v=2.1.4-containment">
+<link rel="modulepreload" href="./main.js?v=2.1.7-containment">
 <script>
   // Pre-init dismissal capture. Runs synchronously during HTML parse,
   // long before main.js evaluates, so any tap or [SPACE] the user does
@@ -1504,7 +1735,7 @@
         <span class="short">W<span id="wave-num-short">—</span> · <span id="mission-time-short">00:00</span></span>
       </div>
       <div id="biomass-bay">
-        <button id="codex-btn" type="button" aria-label="Bestiary">⌬ BESTIARY</button>
+        <button id="codex-btn" type="button" aria-label="Science Log">⌬ SCI LOG</button>
         <div class="biomass-readout">
           <span class="lbl">BIOMASS</span>
           <span class="val" id="biomass-val">0</span>
@@ -1541,7 +1772,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.1.4-α · containment</div>
+        <div id="build-tag">v2.1.7-α · containment</div>
       </div>
     </main>
 
@@ -1623,12 +1854,21 @@
     <div id="codex-modal" class="modal hide">
       <div class="modal-frame">
         <header>
-          <span>// BESTIARY · DEEPWATCH SCIENTIFIC SURVEY</span>
+          <span>// SCIENCE LOG · DEEPWATCH SCIENTIFIC SURVEY</span>
           <button id="codex-close" type="button" aria-label="Close">[ × CLOSE ]</button>
         </header>
-        <div id="codex-tabs" role="tablist"></div>
-        <div id="codex-body"></div>
-        <footer>SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS</footer>
+        <div id="science-tabs" role="tablist">
+          <button class="science-tab active" data-pane="bestiary" type="button" role="tab" aria-selected="true">BESTIARY</button>
+          <button class="science-tab" data-pane="studies" type="button" role="tab" aria-selected="false">STUDIES</button>
+        </div>
+        <div id="science-bestiary-pane" class="science-pane">
+          <div id="codex-tabs" role="tablist"></div>
+          <div id="codex-body"></div>
+        </div>
+        <div id="science-studies-pane" class="science-pane hide">
+          <div id="studies-body"></div>
+        </div>
+        <footer id="science-footer">SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS</footer>
       </div>
     </div>
 
@@ -1677,7 +1917,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.1.4-containment"></script>
+  <script type="module" src="./main.js?v=2.1.7-containment"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier

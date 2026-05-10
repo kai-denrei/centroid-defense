@@ -59,7 +59,7 @@ export function makeContact(x, y, vx, vy, opts = {}) {
     _jitterPeriod: 0.60 + Math.random() * 0.80,        // 0.60 .. 1.40 s
     alive: true,
     aliveAt: performance.now() / 1000,
-    lastBleepAt: 0,
+    detected: false,
     id: Math.random().toString(36).slice(2, 8).toUpperCase(),
   };
 }

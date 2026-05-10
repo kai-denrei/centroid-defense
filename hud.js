@@ -4,6 +4,7 @@
 // All ES module imports must live at the top of the file (browsers parse
 // strictly even though Node hoists). The codex modal needs the bestiary.
 import { BESTIARY } from './bestiary.js';
+import { renderStudiesTab, stopViz } from './science-log.js';
 
 const dom = {};
 function $(id) { return document.getElementById(id); }
@@ -33,6 +34,12 @@ export function initHUD() {
   dom.codexClose = $('codex-close');
   dom.codexBody = $('codex-body');
   dom.codexTabs = $('codex-tabs');
+  // Science Log top-level tabs (BESTIARY | STUDIES)
+  dom.scienceTabs = $('science-tabs');
+  dom.scienceBestiaryPane = $('science-bestiary-pane');
+  dom.scienceStudiesPane = $('science-studies-pane');
+  dom.studiesBody = $('studies-body');
+  dom.scienceFooter = $('science-footer');
   dom.bestiaryDetail = $('bestiary-detail');
   dom.bestiaryDetailImg = $('bestiary-detail-img');
   dom.bestiaryDetailSpec = $('bestiary-detail-spec');
@@ -195,13 +202,71 @@ function renderEntry(sp, kills) {
   </div>`;
 }
 
+// ── SCIENCE LOG top-level tab switching ──────────────────────────────
+// Two top tabs: BESTIARY (the existing creature codex) and STUDIES (lore
+// panels with live viz). Footer text swaps per tab. Clicks wired once
+// during initHUD-time setup; pane visibility toggled by adding/removing
+// `.hide`. The Studies viz canvas only ticks while its pane is visible.
+const SCIENCE_TAB_KEY = 'dw-science-tab';
+const FOOTER_TEXT = {
+  bestiary: 'SPECIES UNLOCK ON FIRST KILL · BIOMASS RETURNS PER UNIT VARIES BY MASS',
+  studies:  'STUDIES UNLOCK AT NARRATIVE BEATS · CLASSIFIED ENTRIES REMAIN REDACTED',
+};
+let _activeSciencePane = 'bestiary';
+
+function applySciencePane(pane, codex) {
+  _activeSciencePane = pane;
+  // tab pills
+  if (dom.scienceTabs) {
+    dom.scienceTabs.querySelectorAll('.science-tab').forEach(b => {
+      const a = b.getAttribute('data-pane') === pane;
+      b.classList.toggle('active', a);
+      b.setAttribute('aria-selected', a ? 'true' : 'false');
+    });
+  }
+  // panes
+  if (dom.scienceBestiaryPane) dom.scienceBestiaryPane.classList.toggle('hide', pane !== 'bestiary');
+  if (dom.scienceStudiesPane)  dom.scienceStudiesPane.classList.toggle('hide', pane !== 'studies');
+  // footer copy
+  if (dom.scienceFooter) dom.scienceFooter.textContent = FOOTER_TEXT[pane] || FOOTER_TEXT.bestiary;
+  // pane content
+  if (pane === 'bestiary') {
+    stopViz();                                     // release the canvas rAF
+    renderCodex(codex || _lastCodex || {});
+  } else {
+    renderStudiesTab(dom.studiesBody);
+  }
+  try { localStorage.setItem(SCIENCE_TAB_KEY, pane); } catch (_) {}
+}
+
+function ensureScienceTabsWired() {
+  if (!dom.scienceTabs || dom.scienceTabs._wired) return;
+  dom.scienceTabs._wired = true;
+  dom.scienceTabs.querySelectorAll('.science-tab').forEach(btn => {
+    btn.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      const pane = btn.getAttribute('data-pane');
+      if (!pane || pane === _activeSciencePane) return;
+      applySciencePane(pane, _lastCodex);
+    });
+  });
+}
+
 // Open / close handlers — caller wires the button events to these.
 export function openCodex(codex) {
-  renderCodex(codex);
+  ensureScienceTabsWired();
+  // restore last-used top tab
+  try {
+    const saved = localStorage.getItem(SCIENCE_TAB_KEY);
+    if (saved === 'bestiary' || saved === 'studies') _activeSciencePane = saved;
+  } catch (_) {}
+  _lastCodex = codex;
+  applySciencePane(_activeSciencePane, codex);
   dom.codexModal.classList.remove('hide');
 }
 export function closeCodex() {
   dom.codexModal.classList.add('hide');
+  stopViz();                              // release the studies canvas rAF
   closeBestiaryDetail();   // also dismiss any stacked lightbox
 }
 

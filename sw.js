@@ -5,7 +5,7 @@
 // install a fresh cache and old caches are evicted on activate. Asset query
 // strings (?v=ASSET_VER) on top-level scripts must be in lockstep.
 
-const CACHE_VERSION = 'v2.1.4-containment';
+const CACHE_VERSION = 'v2.1.7-containment';
 const PRECACHE = `dw-precache-${CACHE_VERSION}`;
 const RUNTIME  = `dw-runtime-${CACHE_VERSION}`;
 const BESTIARY_CACHE = `dw-bestiary-${CACHE_VERSION}`;   // separate bucket for codex art
@@ -23,6 +23,9 @@ const PRECACHE_URLS = [
   './bestiary.js',
   './base.js',
   './containment.js',
+  './science-log.js',
+  './two-sequence.js',
+  './crt.js',
   './offline.html',
   './manifest.webmanifest',
   './icons/icon-192.png',

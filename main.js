@@ -27,10 +27,11 @@ import {
 } from './hud.js';
 import {
   ensureAudio, resumeAudio, sweepPing, contactBleep,
-  strikeWhoosh, detonation, gameOverTone, runCompleteChime, armedChime,
+  gameOverTone, runCompleteChime, armedChime,
   safetyClick, targetLock, launchPress,
 } from './audio.js';
 import { openContainment, isContainmentActive } from './containment.js';
+import { openGardenerIntro, hasSeenGardenerIntro } from './science-log.js';
 
 const TAU = Math.PI * 2;
 const SWEEP_PERIOD = 3.0;
@@ -81,7 +82,7 @@ const deployDroneBtn = document.getElementById('deploy-drone');
 const LOGICAL_SIZE = 720;
 const MOBILE_BREAKPOINT = 900;
 const MOBILE_TOP_PX = 40;
-const MOBILE_LOG_PX = 28;
+const MOBILE_LOG_PX = 44;     // 2 lines on mobile (was 28 — single line)
 const MOBILE_LAUNCH_PX = 86;
 const MOBILE_CAM_PX = 68;
 let scaleFactor = 1;        // cssSize / LOGICAL_SIZE
@@ -89,12 +90,29 @@ let dpr = 1;
 
 function isMobile() { return window.innerWidth < MOBILE_BREAKPOINT; }
 
+function readSafeAreaInsets() {
+  const root = getComputedStyle(document.documentElement);
+  const px = (v) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return {
+    top:    px(root.getPropertyValue('--sat')),
+    bottom: px(root.getPropertyValue('--sab')),
+    left:   px(root.getPropertyValue('--sal')),
+    right:  px(root.getPropertyValue('--sar')),
+  };
+}
+
 function fitCanvas() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   // Mobile: scope size is constant (cam always visible). Compute from viewport.
   if (isMobile()) {
-    const safeTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
-    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + MOBILE_LAUNCH_PX + MOBILE_CAM_PX + safeTop;
+    // Read both top and bottom safe-area insets from a probe element so the
+    // scope is sized for the actually-usable height (status bar + home
+    // indicator both eat real estate on notched iPhones).
+    const insets = readSafeAreaInsets();
+    const chrome = MOBILE_TOP_PX + MOBILE_LOG_PX + MOBILE_LAUNCH_PX + MOBILE_CAM_PX + insets.top + insets.bottom;
     const sideMax = Math.min(window.innerWidth, window.innerHeight - chrome);
     const cssSize = Math.max(220, Math.floor(sideMax));
     document.documentElement.style.setProperty('--scope-css-px', cssSize + 'px');
@@ -306,19 +324,21 @@ function update(dt, t) {
     logT(`HULL BREACH — INTEGRITY ${Math.round(state.rigIntegrity)}%`, { crit: true });
     if (state.rigIntegrity <= 0) return triggerGameOver(t);
   }
-  // sweep crossings → blip + bleep; off-sweep range-cadence bleep
+  // sweep crossings → blip; bleep only on FIRST detection per contact
+  // (silenced the off-sweep range-cadence and per-pass refresh bleeps —
+  // they were stacking into a near-continuous tone with multi-contact waves)
   for (const c of state.contacts) {
     if (!c.alive) continue;
-    const norm = Math.min(1, rangeFromRig(c) / SCOPE_R);
     if (angleCrossed(state.prevSweep, state.sweep, bearingFromRig(c))) {
       state.blips.push({
         x: c.x, y: c.y, t0: t, weight: c.weight, contactId: c.id,
         blipColor: c.blipColor, blipScale: c.blipScale,
       });
-      contactBleep(norm);
+      if (!c.detected) {
+        contactBleep(Math.min(1, rangeFromRig(c) / SCOPE_R));
+        c.detected = true;
+      }
     }
-    const period = BLEEP_NEAR + (BLEEP_FAR - BLEEP_NEAR) * norm;
-    if (t - c.lastBleepAt > period) { contactBleep(norm); c.lastBleepAt = t; }
   }
   state.blips = pruneBlips(state.blips, t);
   // pending strikes → detonate (multiple in flight allowed)
@@ -419,7 +439,6 @@ function detonate(strike, t) {
   }
   state.detonations.push({ x: strike.x, y: strike.y, t0: t });
   state.impactLingers.push({ x: strike.x, y: strike.y, t0: t, killed, inRadius: inCount, biomass });
-  detonation();
   const pct = inCount > 0 ? Math.round(100 * killed / inCount) : 0;
   logT(`DETONATION — ${killed}/${inCount} HIT (${pct}%) · +${biomass} BIOMASS`);
   // Friendly fire — drones inside the strike radius are destroyed. The
@@ -685,7 +704,6 @@ function commitLaunch() {
   state.targetReticle = null;
   state.safetyOff = false;            // auto-reset — every shot earns its own arming ritual
   setOrdnance(state.strikeBudgetThisWave, state.readyStrikes, state.reservedStrikes, state.gauge);
-  strikeWhoosh();
   launchPress();
   logT(`MUNITION RELEASED — TGT ${fmtBearing(bearingFromRig({x,y}))}/${fmtRange(Math.hypot(x - RIG.x, y - RIG.y))}`);
 }
@@ -810,11 +828,19 @@ function startContainment() {
   state.phase = 'containment';
   const round = state.containmentPendingRetry ? findPriorGate(state.wave) : state.wave;
   logT(`CONTAINMENT PROTOCOL — INITIATED (ROUND ${round})`, { crit: true });
-  openContainment({
+  const launch = () => openContainment({
     round,
     creatureSlug: 'bloomjelly',
     onResult: (res) => onContainmentResult(round, res),
   });
+  // First-ever containment: gate behind the GARDENER lore overlay.
+  // Subsequent rounds (and retries) skip straight to the mini-game.
+  if (!hasSeenGardenerIntro()) {
+    logT(`SCIENCE LOG — NEW ENTRY: STUDY 01 / TWO-SEQ-NOISE`, { crit: true });
+    openGardenerIntro(launch);
+  } else {
+    launch();
+  }
 }
 
 function findPriorGate(currentWave) {
