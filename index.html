@@ -1401,34 +1401,87 @@
       height: 100dvh;
       grid-template-columns: 100dvw;
       grid-template-rows:
-        calc(40px + env(safe-area-inset-top))
-        var(--scope-css-px, 360px)
+        calc(84px + env(safe-area-inset-top))
+        var(--scope-css-px, 320px)
         1fr;
     }
-    /* TOP BAR — compressed; interior content sits BELOW the iOS status bar
-       (apple-mobile-web-app-status-bar-style is black-translucent, so the OS
-       overlays the top inset; safe-area-inset-top is non-zero on notched
-       devices). Without this padding the rig info renders behind the
-       signal/wifi/battery glyphs. */
+    /* TOP BAR — two-row grid on mobile.
+       Row A (status strip): designation · wave/time · ORD pips.
+       Row B (action strip): SCI LOG button + BIOMASS readout.
+       Stacking is required because the Dynamic Island / notch eats the
+       horizontal center of the status bar zone on iPhone, and four flex
+       children on one row (designation, center, biomass+SCI LOG, ORD)
+       overflow narrow phones — the SCI LOG button was getting clipped or
+       hidden behind the Island. apple-mobile-web-app-status-bar-style is
+       black-translucent, so safe-area-inset-top is non-zero on notched
+       devices and offsets the whole bar below the Island. */
     #topbar {
       grid-column: 1;
       grid-row: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "desig   center  ord"
+        "scilog  scilog  biomass";
+      column-gap: 8px;
+      row-gap: 6px;
       padding-left: max(10px, env(safe-area-inset-left));
       padding-right: max(10px, env(safe-area-inset-right));
-      align-items: flex-start;
-      padding-top: calc(env(safe-area-inset-top) + 8px);
+      padding-top: calc(env(safe-area-inset-top) + 6px);
+      padding-bottom: 8px;
+      align-items: center;
     }
-    #topbar .designation { font-size: 11px; letter-spacing: 0.16em; }
-    #topbar .center-readout { font-size: 11px; letter-spacing: 0.10em; }
+    #topbar .designation { grid-area: desig; font-size: 11px; letter-spacing: 0.16em; }
+    #topbar .center-readout { grid-area: center; font-size: 11px; letter-spacing: 0.10em; text-align: center; }
     /* keep ORD status anchored right and bounded — prevents the STANDBY/ARMED
        string from drifting under the OS battery glyph if the topbar ever
        reflows */
-    #topbar #ord-bay { max-width: 96px; align-items: flex-end; }
+    #topbar #ord-bay { grid-area: ord; max-width: 110px; align-items: flex-end; justify-self: end; }
     #topbar #ord-status { white-space: nowrap; text-align: right; }
     #topbar .designation .full,
     #topbar .center-readout .full { display: none; }
     #topbar .designation .short,
     #topbar .center-readout .short { display: inline; }
+    /* Action strip — SCI LOG becomes a real 44pt tap target on the left,
+       BIOMASS sits right. biomass-bay was column-stacked on desktop; flatten
+       to row layout so SCI LOG can break out into its own grid cell. */
+    #topbar #biomass-bay {
+      grid-area: biomass;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      margin-right: 0;
+      gap: 10px;
+      justify-self: end;
+    }
+    /* Pull the button out of biomass-bay visually by absolute-grid placement.
+       Direct-child selector targets the codex button to relocate it into the
+       scilog cell while leaving its sibling .biomass-readout in the biomass
+       cell. */
+    #topbar #biomass-bay #codex-btn {
+      grid-area: scilog;
+      justify-self: start;
+      align-self: center;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      padding: 10px 16px;
+      min-height: 36px;
+      border-color: var(--p-mid);
+      color: var(--p-hot);
+    }
+    /* Hoist codex-btn directly into the topbar grid by re-parenting it
+       layout-wise: contents on biomass-bay would break the right-align of
+       BIOMASS, so keep biomass-bay as a flex container that only holds the
+       readout. The button is placed via display:contents trick. */
+    #topbar #biomass-bay { display: contents; }
+    /* re-establish a wrapper-less flex for the readout: it now sits directly
+       in the biomass grid cell */
+    #topbar #biomass-bay .biomass-readout {
+      grid-area: biomass;
+      justify-self: end;
+      align-self: center;
+    }
     /* integrity bar pinned to bottom edge of topbar */
     #leftrail {
       grid-column: 1;
@@ -1697,7 +1750,7 @@
      where the intro is on screen but its pointerdown handler isn't bound
      yet — taps in that window were silently lost ("space/tap to begin
      sometimes fails on reload"). -->
-<link rel="modulepreload" href="./main.js?v=2.1.7-containment">
+<link rel="modulepreload" href="./main.js?v=2.1.8-mobile-topbar">
 <script>
   // Pre-init dismissal capture. Runs synchronously during HTML parse,
   // long before main.js evaluates, so any tap or [SPACE] the user does
@@ -1772,7 +1825,7 @@
           TAP <strong style="color:var(--p-hot)">SHARE</strong> → <strong style="color:var(--p-hot)">ADD TO HOME SCREEN</strong> TO INSTALL
           <div class="dismiss" id="ios-a2hs-dismiss">[ DISMISS ]</div>
         </div>
-        <div id="build-tag">v2.1.7-α · containment</div>
+        <div id="build-tag">v2.1.8-α · mobile-topbar</div>
       </div>
     </main>
 
@@ -1917,7 +1970,7 @@
     <div style="color:var(--p-mid);font-size:10px;letter-spacing:0.18em">DEEPWATCH SUPPORTS PORTRAIT ORIENTATION ONLY</div>
   </div>
 
-  <script type="module" src="./main.js?v=2.1.7-containment"></script>
+  <script type="module" src="./main.js?v=2.1.8-mobile-topbar"></script>
   <script>
     if ('serviceWorker' in navigator) {
       // Register but DO NOT auto-reload on controllerchange. The earlier

@@ -81,7 +81,7 @@ const deployDroneBtn = document.getElementById('deploy-drone');
 // keeps using RIG (360,360), SCOPE_R 320, etc. unchanged.
 const LOGICAL_SIZE = 720;
 const MOBILE_BREAKPOINT = 900;
-const MOBILE_TOP_PX = 40;
+const MOBILE_TOP_PX = 84;     // two-row topbar (status + SCI LOG/biomass action strip)
 const MOBILE_LOG_PX = 44;     // 2 lines on mobile (was 28 — single line)
 const MOBILE_LAUNCH_PX = 86;
 const MOBILE_CAM_PX = 68;
